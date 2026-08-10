@@ -198,6 +198,17 @@ class LiveFoundryProvider:
                 )
 
             try:
+                document = self._repository.select(request.scenario)
+            except PolicyUnavailableError as exc:
+                span.set_attribute("error.type", "policy_unavailable")
+                span.set_status(Status(StatusCode.ERROR, str(exc)))
+                span.record_exception(exc)
+                raise ProviderError(
+                    "policy_unavailable",
+                    "No current policy document is available to answer the question",
+                ) from exc
+
+            try:
                 client = self._get_client()
                 response = await asyncio.to_thread(
                     client.responses.create,
@@ -220,16 +231,6 @@ class LiveFoundryProvider:
             input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
             output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
             answer = str(response.output_text)
-            try:
-                document = self._repository.select(request.scenario)
-            except PolicyUnavailableError as exc:
-                span.set_attribute("error.type", "policy_unavailable")
-                span.set_status(Status(StatusCode.ERROR, str(exc)))
-                span.record_exception(exc)
-                raise ProviderError(
-                    "policy_unavailable",
-                    "No current policy document is available to answer the question",
-                ) from exc
 
             span.set_attribute("gen_ai.response.id", response_id)
             span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
