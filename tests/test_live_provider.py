@@ -1,4 +1,4 @@
-from policy_agent.models import AnswerStatus, AskRequest, RuntimeMode
+from policy_agent.models import AnswerStatus, AskRequest, RuntimeMode, Scenario
 from policy_agent.providers import (
     LiveFoundryProvider,
     SimulationProvider,
@@ -101,15 +101,21 @@ async def test_live_invocation_uses_hosted_agent_client(settings):
     provider = LiveFoundryProvider(configured, repository, client=client)
 
     result = await provider.answer(
-        AskRequest(question="精算期限は？", mode=RuntimeMode.LIVE),
+        AskRequest(
+            question="精算期限は？",
+            mode=RuntimeMode.LIVE,
+            scenario=Scenario.STALE_POLICY,
+        ),
         "conv_test",
     )
 
     assert result.response_id == "resp_test"
+    assert result.sources[0].version == "2026-07-01"
+    assert result.sources[0].status == "current"
     assert client.responses.kwargs == {
         "input": (
             "Conversation ID: conv_test\n"
-            "Scenario: healthy\n"
+            "Scenario: stale_policy\n"
             "Request ID: REQ-2026-0042\n"
             "Question: 精算期限は？"
         )

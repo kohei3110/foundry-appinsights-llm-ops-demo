@@ -48,7 +48,7 @@ Microsoft Foundry のポリシー回答 Agent に意図的な品質劣化、遅�
 | Scenario | 注入する事象 | 画面で確認する結果 | 主な監視信号 |
 |---|---|---|---|
 | `healthy` | 現行規程、正常なツール | 30日以内、現行版 `2026-07-01` | 正常な `retrieve`、`execute_tool`、`invoke_agent` |
-| `stale_policy` | 廃止済み規程を優先 | 14日以内、`superseded`、版 `2025-04-01` | `llmops.policy.status=superseded` |
+| `stale_policy` | 廃止済み規程を除外 | 30日以内、`current`、版 `2026-07-01` | superseded の `retrieve` がないこと |
 | `slow_tool` | request-status を遅延 | 回答は成功するが Elapsed が増加 | 長い `execute_tool` span、p95悪化 |
 | `tool_failure` | request-status を失敗 | 申請状況を取得できないことを明示 | `execute_tool` failure、`error.type` |
 
@@ -117,7 +117,7 @@ az containerapp show \
 
 ### 5.5 ライブAlertを事前に用意する場合
 
-Observabilityの実演で待ち時間を減らす場合は、開始5～10分前にUIから `live` / `stale_policy` を1回実行します。
+`stale_policy` は現行規程のみを選択する回帰確認です。既にFiredの stale-policy Alert は人間が調査し、新たな live の stale-policy 実行で再発を作りません。
 
 Alert名:
 
@@ -164,7 +164,7 @@ Alert評価は5分間隔です。AlertがFiredになったことを確認して�
 
 必要に応じて `monitoring/kql/01-overview.kql` を実行し、正常リクエストを表示します。
 
-### Step 3: 検索品質の劣化を確認する（2分）
+### Step 3: 現行規程の回帰を確認する（2分）
 
 1. **Scenario** を `stale_policy` に変更します。
 2. 同じ質問を送信します。
@@ -172,9 +172,9 @@ Alert評価は5分間隔です。AlertがFiredになったことを確認して�
 
 期待結果:
 
-- 回答: **14日以内**
-- Source status: `superseded`
-- Source version: `2025-04-01`
+- 回答: **30日以内**
+- Source status: `current`
+- Source version: `2026-07-01`
 - HTTP処理自体は成功
 
 `monitoring/kql/06-conversation-detail.kql` の先頭を更新します。
@@ -185,13 +185,13 @@ let targetConversation = "<画面のConversation ID>";
 
 確認項目:
 
-- `retrieve_policy` が廃止済み規程を選択
-- `llmops.policy.status=superseded`
+- `retrieve_policy` が現行規程を選択
+- `llmops.policy.status=current`
 - モデル呼び出しは成功
 
 説明:
 
-> 自然な文章で回答され、HTTPも成功していますが、根拠文書の版が誤っています。LLM運用では、可用性監視だけではこの品質劣化を検知できません。
+> `stale_policy` は廃止済み規程を選択しないことを確認する回帰ケースです。既にFiredのAlertは人間が調査し、修正後の再発はAlertの対象外であることを確認します。
 
 ### Step 4: 遅延の原因をspanで特定する（2分）
 
@@ -384,7 +384,7 @@ artifacts/evaluation-comparison.json
 
 | 時間 | 実施内容 |
 |---:|---|
-| 2分 | `healthy` と `stale_policy` を比較 |
+| 2分 | `healthy` と `stale_policy` で現行規程を確認 |
 | 2分 | `tool_failure` を実行してTrace IDを取得 |
 | 3分 | SRE Agentのevidence、除外仮説、推定原因を表示 |
 | 3分 | `awaiting_issue` からFired Alertの **Investigate** を開始 |

@@ -52,7 +52,7 @@ The supported scenarios are:
 | Scenario | Behavior | Expected signal |
 |---|---|---|
 | `healthy` | Current policy and normal tool | Correct 30-day answer |
-| `stale_policy` | Superseded policy selected | Old 14-day answer and version regression |
+| `stale_policy` | Current-policy regression check | Correct 30-day answer; no superseded source |
 | `slow_tool` | Request-status delay | Long `execute_tool` span |
 | `tool_failure` | Controlled dependency failure | HTTP 502, failed span, structured error |
 

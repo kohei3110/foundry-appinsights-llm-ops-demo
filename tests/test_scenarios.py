@@ -1,3 +1,5 @@
+import json
+
 from policy_agent.models import (
     AnswerStatus,
     AskRequest,
@@ -46,8 +48,41 @@ async def test_stale_policy_scenario(settings):
     )
 
     assert response.status is AnswerStatus.OK
-    assert "14日以内" in response.answer
-    assert response.sources[0].status == "superseded"
+    assert "30日以内" in response.answer
+    assert response.sources[0].status == "current"
+
+
+async def test_no_current_policy_returns_answer_unavailable(settings, tmp_path):
+    policies_root = tmp_path / "policies"
+    policies_root.mkdir()
+    (policies_root / "index.json").write_text(
+        json.dumps(
+            [
+                {
+                    "document_id": "travel-expense-policy",
+                    "title": "Superseded policy",
+                    "version": "2025-04-01",
+                    "effective_date": "2025-04-01",
+                    "status": "superseded",
+                    "path": "superseded.md",
+                    "reimbursement_days": 14,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (policies_root / "superseded.md").write_text("superseded", encoding="utf-8")
+    service_settings = settings.model_copy(update={"data_root": tmp_path})
+
+    response = await build_service(service_settings).answer(
+        AskRequest(question="精算期限と申請状況は？")
+    )
+
+    assert response.status is AnswerStatus.ERROR
+    assert response.answer is None
+    assert response.sources == []
+    assert response.error.code == "policy_unavailable"
+    assert response.error.retryable is False
 
 
 async def test_slow_tool_scenario_is_measurably_slower(settings):

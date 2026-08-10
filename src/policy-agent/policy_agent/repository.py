@@ -10,6 +10,10 @@ from policy_agent.models import RuntimeMode, Scenario, Source
 from policy_agent.telemetry import get_tracer
 
 
+class PolicyUnavailableError(LookupError):
+    """Raised when no current policy document is configured."""
+
+
 @dataclass(frozen=True)
 class PolicyDocument:
     document_id: str
@@ -50,16 +54,13 @@ class PolicyRepository:
         ]
 
     def select(self, scenario: Scenario) -> PolicyDocument:
-        desired_status = (
-            "superseded" if scenario is Scenario.STALE_POLICY else "current"
-        )
         matching = [
             document
             for document in self._documents
-            if document.status == desired_status
+            if document.status == "current"
         ]
         if not matching:
-            raise LookupError(f"No {desired_status} policy document is configured")
+            raise PolicyUnavailableError("No current policy document is configured")
         return max(matching, key=lambda document: document.effective_date)
 
     def retrieve(

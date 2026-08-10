@@ -13,6 +13,7 @@ from policy_agent.models import (
     RuntimeMode,
 )
 from policy_agent.providers import AnswerProvider, ProviderError
+from policy_agent.repository import PolicyUnavailableError
 from policy_agent.telemetry import current_trace_id, get_tracer
 from policy_agent.tools import RequestStatusToolError
 
@@ -56,12 +57,19 @@ class AnswerService:
                     input_tokens=result.input_tokens,
                     output_tokens=result.output_tokens,
                 )
-            except (ProviderError, RequestStatusToolError) as exc:
+            except (
+                ProviderError,
+                PolicyUnavailableError,
+                RequestStatusToolError,
+            ) as exc:
                 response_id = f"errresp_{uuid4().hex}"
                 elapsed_ms = round((perf_counter() - started) * 1000, 2)
                 if isinstance(exc, ProviderError):
                     code = exc.code
                     retryable = exc.retryable
+                elif isinstance(exc, PolicyUnavailableError):
+                    code = "policy_unavailable"
+                    retryable = False
                 else:
                     code = "request_status_failure"
                     retryable = True
