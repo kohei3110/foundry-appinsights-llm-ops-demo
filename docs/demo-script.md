@@ -48,7 +48,7 @@ Microsoft Foundry のポリシー回答 Agent に意図的な品質劣化、遅�
 | Scenario | 注入する事象 | 画面で確認する結果 | 主な監視信号 |
 |---|---|---|---|
 | `healthy` | 現行規程、正常なツール | 30日以内、現行版 `2026-07-01` | 正常な `retrieve`、`execute_tool`、`invoke_agent` |
-| `stale_policy` | 廃止済み規程を優先 | 14日以内、`superseded`、版 `2025-04-01` | `llmops.policy.status=superseded` |
+| `stale_policy` | 廃止済み規程の選択を試行 | 30日以内、`current`、版 `2026-07-01` | `llmops.policy.status=superseded` が出ないこと |
 | `slow_tool` | request-status を遅延 | 回答は成功するが Elapsed が増加 | 長い `execute_tool` span、p95悪化 |
 | `tool_failure` | request-status を失敗 | 申請状況を取得できないことを明示 | `execute_tool` failure、`error.type` |
 
@@ -172,9 +172,9 @@ Alert評価は5分間隔です。AlertがFiredになったことを確認して�
 
 期待結果:
 
-- 回答: **14日以内**
-- Source status: `superseded`
-- Source version: `2025-04-01`
+- 回答: **30日以内**
+- Source status: `current`
+- Source version: `2026-07-01`
 - HTTP処理自体は成功
 
 `monitoring/kql/06-conversation-detail.kql` の先頭を更新します。
@@ -185,13 +185,13 @@ let targetConversation = "<画面のConversation ID>";
 
 確認項目:
 
-- `retrieve_policy` が廃止済み規程を選択
-- `llmops.policy.status=superseded`
+- `retrieve_policy` が現行規程のみを選択
+- `llmops.policy.status=superseded` のspanが発生しない
 - モデル呼び出しは成功
 
 説明:
 
-> 自然な文章で回答され、HTTPも成功していますが、根拠文書の版が誤っています。LLM運用では、可用性監視だけではこの品質劣化を検知できません。
+> 以前はHTTPが成功しても根拠文書の版が誤る品質劣化が発生していました。現在は検索対象を現行規程に限定しており、`llmops.policy.status=superseded` を検知するAzure Monitorアラートは回帰検知用の信号として維持しています。
 
 ### Step 4: 遅延の原因をspanで特定する（2分）
 
