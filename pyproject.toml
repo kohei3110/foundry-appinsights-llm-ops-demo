@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools==80.10.2", "wheel==0.46.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "foundry-appinsights-llm-ops-demo"
+version = "0.1.0"
+description = "Microsoft Foundry and Application Insights LLM operations demonstration"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "azure-ai-projects==2.3.0",
+  "azure-identity==1.25.3",
+  "azure-monitor-opentelemetry==1.8.9",
+  "fastapi==0.141.1",
+  "httpx==0.28.1",
+  "opentelemetry-api==1.43.0",
+  "opentelemetry-instrumentation-fastapi==0.64b0",
+  "opentelemetry-sdk==1.43.0",
+  "pydantic==2.13.4",
+  "pydantic-settings==2.14.2",
+  "python-dotenv==1.2.2",
+  "uvicorn[standard]==0.52.1",
+]
+
+[project.optional-dependencies]
+agent = [
+  "agent-framework-foundry==1.10.4",
+  "agent-framework-foundry-hosting==1.0.0b260730",
+]
+test = [
+  "pytest==9.1.1",
+  "pytest-asyncio==1.4.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src/policy-agent", "src/web"]
+include = ["policy_agent*", "webapp*"]
+
+[tool.setuptools.package-data]
+webapp = ["static/*.html"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+asyncio_mode = "auto"
+testpaths = ["tests"]

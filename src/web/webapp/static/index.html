@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Foundry LLM Operations Demo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07111f;
+      --panel: #102139;
+      --panel-2: #162b47;
+      --text: #eef6ff;
+      --muted: #9db1c8;
+      --accent: #55d6be;
+      --danger: #ff7d8a;
+      --border: #284665;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 85% 0%, #163a5f 0, transparent 34rem),
+        linear-gradient(145deg, #07111f, #0b1728 70%);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+    }
+    main { width: min(1080px, calc(100% - 32px)); margin: 0 auto; padding: 44px 0 64px; }
+    header { display: flex; gap: 24px; align-items: end; justify-content: space-between; margin-bottom: 24px; }
+    h1 { margin: 0; font-size: clamp(2rem, 5vw, 4rem); letter-spacing: -0.05em; }
+    .eyebrow { color: var(--accent); text-transform: uppercase; letter-spacing: .16em; font-size: .78rem; }
+    .subtitle { color: var(--muted); max-width: 55ch; line-height: 1.7; }
+    .panel {
+      background: color-mix(in srgb, var(--panel) 92%, transparent);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 28px 80px #0006;
+      padding: 24px;
+      backdrop-filter: blur(12px);
+    }
+    form { display: grid; gap: 16px; }
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    label { display: grid; gap: 8px; color: var(--muted); font-size: .85rem; }
+    select, textarea, input {
+      width: 100%;
+      color: var(--text);
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 13px 14px;
+      font: inherit;
+    }
+    textarea { min-height: 110px; resize: vertical; }
+    button {
+      justify-self: start;
+      border: 0;
+      border-radius: 999px;
+      padding: 13px 22px;
+      color: #042018;
+      background: var(--accent);
+      font-weight: 800;
+      cursor: pointer;
+    }
+    button:disabled { opacity: .55; cursor: wait; }
+    #result { margin-top: 22px; display: none; }
+    .answer { white-space: pre-wrap; line-height: 1.75; font-size: 1.06rem; }
+    .error { color: var(--danger); }
+    .meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 20px; }
+    .meta div { background: #08182b; padding: 12px; border-radius: 10px; overflow-wrap: anywhere; }
+    .meta span { display: block; color: var(--muted); font-size: .72rem; margin-bottom: 5px; }
+    .sources { margin-top: 18px; color: var(--muted); }
+    .section-title { margin: 0 0 8px; font-size: 1.35rem; }
+    .section-copy { margin: 0 0 18px; color: var(--muted); line-height: 1.6; }
+    .ops-panel { margin-top: 22px; }
+    .ops-result { margin-top: 22px; display: none; }
+    .ops-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 18px; }
+    .ops-card { background: #08182b; border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+    .ops-card h3 { margin: 0 0 12px; font-size: 1rem; color: var(--accent); }
+    .ops-card ul, .ops-card ol { margin: 0; padding-left: 20px; color: var(--muted); line-height: 1.6; }
+    .ops-card strong { color: var(--text); }
+    .action { margin: 0 0 12px; padding: 12px; border-left: 4px solid var(--accent); background: #102139; }
+    .action:last-child { margin-bottom: 0; }
+    .approval { color: #ffd18c; font-weight: 700; }
+    .portal-link { color: var(--accent); }
+    code { color: var(--accent); }
+    @media (max-width: 760px) {
+      header { display: block; }
+      .controls, .meta, .ops-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <div class="eyebrow">Microsoft Foundry / Application Insights</div>
+      <h1>LLM Operations Lab</h1>
+    </div>
+    <p class="subtitle">品質劣化、遅延、ツール障害を意図的に再現し、Conversation・Response・Trace を同じ画面で確認します。</p>
+  </header>
+  <section class="panel">
+    <form id="ask-form">
+      <div class="controls">
+        <label>Runtime mode
+          <select id="mode">
+            <option value="simulation">simulation</option>
+            <option value="live">live</option>
+          </select>
+        </label>
+        <label>Scenario
+          <select id="scenario">
+            <option value="healthy">healthy</option>
+            <option value="stale_policy">stale_policy</option>
+            <option value="slow_tool">slow_tool</option>
+            <option value="tool_failure">tool_failure</option>
+          </select>
+        </label>
+      </div>
+      <label>Question
+        <textarea id="question">国内出張の精算期限と申請 REQ-2026-0042 の状況を教えてください。</textarea>
+      </label>
+      <button id="submit" type="submit">Run scenario</button>
+    </form>
+  </section>
+  <section id="result" class="panel" aria-live="polite">
+    <div id="answer" class="answer"></div>
+    <div id="sources" class="sources"></div>
+    <div class="meta">
+      <div><span>Elapsed</span><code id="elapsed"></code></div>
+      <div><span>Scenario</span><code id="scenario-out"></code></div>
+      <div><span>Conversation ID</span><code id="conversation"></code></div>
+      <div><span>Response ID</span><code id="response"></code></div>
+      <div><span>Trace ID</span><code id="trace"></code></div>
+      <div><span>Mode</span><code id="mode-out"></code></div>
+      <div><span>Input tokens</span><code id="input-tokens"></code></div>
+      <div><span>Output tokens</span><code id="output-tokens"></code></div>
+    </div>
+  </section>
+  <section class="panel ops-panel">
+    <h2 class="section-title">SRE / Observability investigation</h2>
+    <p class="section-copy">SRE Agent が証拠と推定原因をまとめ、Observability Agent が人間承認を前提としたネクストアクションを提示します。</p>
+    <form id="operations-form">
+      <div class="controls">
+        <label>Runtime mode
+          <select id="operations-mode">
+            <option value="simulation">simulation</option>
+            <option value="live">live</option>
+          </select>
+        </label>
+        <label>Incident scenario
+          <select id="operations-scenario">
+            <option value="stale_policy">stale_policy</option>
+            <option value="slow_tool">slow_tool</option>
+            <option value="tool_failure" selected>tool_failure</option>
+          </select>
+        </label>
+      </div>
+      <label>Trace ID (optional)
+        <input id="operations-trace" placeholder="直前の Trace ID を貼り付け">
+      </label>
+      <button id="operations-submit" type="submit">Investigate and recommend</button>
+    </form>
+  </section>
+  <section id="operations-result" class="panel ops-result" aria-live="polite">
+    <div id="operations-summary" class="answer"></div>
+    <div class="meta">
+      <div><span>Mode</span><code id="operations-mode-out"></code></div>
+      <div><span>Scenario</span><code id="operations-scenario-out"></code></div>
+      <div><span>Trace ID</span><code id="operations-trace-out"></code></div>
+      <div><span>Elapsed</span><code id="operations-elapsed"></code></div>
+      <div><span>Investigation ID</span><code id="operations-investigation"></code></div>
+      <div><span>Issue status</span><code id="operations-issue-status"></code></div>
+      <div><span>Severity</span><code id="operations-severity"></code></div>
+      <div><span>Human approval</span><code>required</code></div>
+    </div>
+    <div class="ops-grid">
+      <div class="ops-card">
+        <h3>SRE Agent evidence</h3>
+        <ul id="operations-evidence"></ul>
+      </div>
+      <div class="ops-card">
+        <h3>Ruled-out hypotheses</h3>
+        <ul id="operations-ruled-out"></ul>
+      </div>
+      <div class="ops-card">
+        <h3>Probable root cause</h3>
+        <div id="operations-root-cause"></div>
+      </div>
+      <div class="ops-card">
+        <h3>Observability Agent next actions</h3>
+        <div id="operations-actions"></div>
+        <div id="operations-portal"></div>
+      </div>
+    </div>
+  </section>
+</main>
+<script>
+  const form = document.querySelector("#ask-form");
+  const button = document.querySelector("#submit");
+  const result = document.querySelector("#result");
+  const conversationKey = "llmops-conversation-id";
+  const operationsForm = document.querySelector("#operations-form");
+  const operationsButton = document.querySelector("#operations-submit");
+  const operationsResult = document.querySelector("#operations-result");
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    button.disabled = true;
+    button.textContent = "Running...";
+    try {
+      const response = await fetch("/api/ask", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          question: document.querySelector("#question").value,
+          mode: document.querySelector("#mode").value,
+          scenario: document.querySelector("#scenario").value,
+          conversation_id: localStorage.getItem(conversationKey),
+          request_id: "REQ-2026-0042"
+        })
+      });
+      const data = await response.json();
+      localStorage.setItem(conversationKey, data.conversation_id);
+      const answer = document.querySelector("#answer");
+      answer.className = data.status === "error" ? "answer error" : "answer";
+      answer.textContent = data.error ? `${data.error.code}: ${data.error.message}` : data.answer;
+      document.querySelector("#sources").textContent =
+        data.sources.length ? `Sources: ${data.sources.map(s => `${s.title} / ${s.version} / ${s.status}`).join(", ")}` : "Sources: none";
+      document.querySelector("#elapsed").textContent = `${data.elapsed_ms} ms`;
+      document.querySelector("#scenario-out").textContent = data.scenario;
+      document.querySelector("#conversation").textContent = data.conversation_id;
+      document.querySelector("#response").textContent = data.response_id;
+      document.querySelector("#trace").textContent = data.trace_id;
+      document.querySelector("#mode-out").textContent = data.mode;
+      document.querySelector("#input-tokens").textContent = data.input_tokens;
+      document.querySelector("#output-tokens").textContent = data.output_tokens;
+      result.style.display = "block";
+    } catch (error) {
+      result.style.display = "block";
+      const answer = document.querySelector("#answer");
+      answer.className = "answer error";
+      answer.textContent = `Request failed: ${error}`;
+    } finally {
+      button.disabled = false;
+      button.textContent = "Run scenario";
+    }
+  });
+
+  operationsForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    operationsButton.disabled = true;
+    operationsButton.textContent = "Investigating...";
+    try {
+      const traceId = document.querySelector("#operations-trace").value.trim();
+      const response = await fetch("/api/operations/investigate", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          mode: document.querySelector("#operations-mode").value,
+          scenario: document.querySelector("#operations-scenario").value,
+          trace_id: traceId || null,
+          conversation_id: localStorage.getItem(conversationKey),
+          time_range_minutes: 30
+        })
+      });
+      const data = await response.json();
+      operationsResult.style.display = "block";
+      const summary = document.querySelector("#operations-summary");
+      if (data.error) {
+        summary.className = "answer error";
+        summary.textContent = `${data.error.code}: ${data.error.message}`;
+        return;
+      }
+      summary.className = "answer";
+      summary.textContent = `${data.investigation.summary}\n\n${data.decision.summary}`;
+      document.querySelector("#operations-mode-out").textContent = data.mode;
+      document.querySelector("#operations-scenario-out").textContent = data.scenario;
+      document.querySelector("#operations-trace-out").textContent = data.trace_id;
+      document.querySelector("#operations-elapsed").textContent = `${data.elapsed_ms} ms`;
+      document.querySelector("#operations-investigation").textContent = data.investigation.investigation_id;
+      document.querySelector("#operations-issue-status").textContent = data.decision.status;
+      document.querySelector("#operations-severity").textContent = data.decision.severity;
+      document.querySelector("#operations-root-cause").textContent =
+        `${data.investigation.probable_root_cause} (confidence ${Math.round(data.investigation.confidence * 100)}%)`;
+      document.querySelector("#operations-evidence").innerHTML =
+        data.investigation.evidence.map(item =>
+          `<li><strong>${item.signal}</strong>: ${item.observation}<br><small>${item.source}</small></li>`
+        ).join("");
+      document.querySelector("#operations-ruled-out").innerHTML =
+        data.investigation.ruled_out_hypotheses.map(item => `<li>${item}</li>`).join("");
+      document.querySelector("#operations-actions").innerHTML =
+        data.decision.next_actions.length
+          ? data.decision.next_actions.map(item =>
+              `<div class="action"><strong>${item.priority} — ${item.title}</strong><br>` +
+              `Owner: ${item.owner}<br>${item.rationale}<br>` +
+              `<span class="approval">Approval required</span><br>` +
+              `<small>Validate: ${item.validation}</small></div>`
+            ).join("")
+          : `<p class="approval">Azure Monitor Issue の生成を待っています。</p>`;
+      document.querySelector("#operations-portal").innerHTML =
+        data.decision.portal_url
+          ? `<a class="portal-link" href="${data.decision.portal_url}" target="_blank" rel="noreferrer">${
+              data.decision.status === "awaiting_issue"
+                ? "Open fired alerts and run Investigate"
+                : "Open Azure Monitor issue"
+            }</a>`
+          : "";
+    } catch (error) {
+      operationsResult.style.display = "block";
+      const summary = document.querySelector("#operations-summary");
+      summary.className = "answer error";
+      summary.textContent = `Investigation failed: ${error}`;
+    } finally {
+      operationsButton.disabled = false;
+      operationsButton.textContent = "Investigate and recommend";
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+let targetConversation = "<conversation-id>";
+union withsource=sourceTable requests, dependencies, traces, exceptions
+| where timestamp > ago(7d)
+| extend
+    conversationId = coalesce(
+        tostring(customDimensions["gen_ai.conversation.id"]),
+        tostring(customDimensions["azure.ai.agentserver.conversation_id"]),
+        operation_Id
+    ),
+    operation = tostring(customDimensions["gen_ai.operation.name"]),
+    responseId = coalesce(
+        tostring(customDimensions["gen_ai.response.id"]),
+        tostring(customDimensions["azure.ai.agentserver.response_id"])
+    )
+| where conversationId == targetConversation
+| project timestamp, sourceTable, operation, name, duration, success, resultCode, responseId, operation_Id, id, operation_ParentId
+| order by timestamp asc

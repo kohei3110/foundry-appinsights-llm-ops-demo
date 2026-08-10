@@ -1,0 +1,12 @@
+.git
+.github
+.azure
+.foundry
+.venv
+artifacts
+docs
+infra
+monitoring
+tests
+**/__pycache__
+**/*.pyc

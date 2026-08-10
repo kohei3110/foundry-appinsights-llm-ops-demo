@@ -1,0 +1,17 @@
+let lookback = 30m;
+dependencies
+| where timestamp > ago(lookback)
+| extend
+    operation = tostring(customDimensions["gen_ai.operation.name"]),
+    scenario = tostring(customDimensions["llmops.scenario"]),
+    mode = tostring(customDimensions["llmops.mode"]),
+    policyStatus = tostring(customDimensions["llmops.policy.status"]),
+    errorType = tostring(customDimensions["error.type"])
+| where mode == "live"
+| summarize
+    stalePolicyCount = countif(operation == "retrieve" and policyStatus == "superseded"),
+    toolFailureCount = countif(operation == "execute_tool" and (success == false or isnotempty(errorType))),
+    p95ToolDuration = percentileif(duration, 95, operation == "execute_tool"),
+    affectedTraces = dcountif(operation_Id, scenario in ("stale_policy", "slow_tool", "tool_failure"))
+  by bin(timestamp, 5m)
+| order by timestamp desc

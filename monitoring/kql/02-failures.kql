@@ -1,0 +1,12 @@
+dependencies
+| where timestamp > ago(24h)
+| where isnotempty(customDimensions["gen_ai.operation.name"])
+| where success == false or isnotempty(customDimensions["error.type"])
+| extend
+    operation = tostring(customDimensions["gen_ai.operation.name"]),
+    scenario = tostring(customDimensions["llmops.scenario"]),
+    errorType = tostring(customDimensions["error.type"]),
+    conversationId = tostring(customDimensions["gen_ai.conversation.id"]),
+    responseId = tostring(customDimensions["gen_ai.response.id"])
+| project timestamp, operation, scenario, errorType, resultCode, duration, conversationId, responseId, operation_Id
+| order by timestamp desc

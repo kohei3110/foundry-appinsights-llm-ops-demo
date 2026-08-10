@@ -1,0 +1,84 @@
+schemaVersion: 1
+defaultEnvironment: dev
+azd:
+  service: policy-agent
+  environmentName: foundry-llmops-v1d8
+environments:
+  dev:
+    evaluationSuites:
+      - name: policy-agent-regression
+        tags:
+          tier: smoke
+        localDatasetPath: ../../data/evaluation/policy_eval.jsonl
+        resultPath: .foundry/results
+  foundry-llmops-v1d8:
+    evaluationSuites:
+      - name: policy-agent-regression
+        generationSource: eval-yaml
+        tags:
+          tier: smoke
+          purpose: regression
+        localDatasetPath: ../../data/evaluation/policy_agent_hosted_eval.jsonl
+        evaluators:
+          - builtin.relevance
+          - builtin.task_adherence
+          - builtin.intent_resolution
+          - builtin.tool_call_accuracy
+        resultPath: .foundry/results/foundry-llmops-v1d8
+    lastEval:
+      evalId: eval_fb9df69f58fe4e4b88fc5480d55dcaba
+      evalRunId: evalrun_cd7fec52a0964deda9a5b9a52d82e06b
+      runName: foundry-llmops-v1d8-policy-agent-v6-complete-run
+      suiteName: policy-agent-regression
+      suiteVersion: local-draft
+      agentVersion: "6"
+      startedAt: 2026-08-04T16:23:20Z
+      status: completed
+      resultFile: .foundry/results/foundry-llmops-v1d8/eval_fb9df69f58fe4e4b88fc5480d55dcaba/evalrun_cd7fec52a0964deda9a5b9a52d82e06b.json
+      reportUrl: https://ai.azure.com/nextgen/r/G44wroPWSOyNJdCD7sDnVA,rg-llmops-validate,,aillmopssypsod6k,policy-ops-llmops-validate/build/evaluations/eval_fb9df69f58fe4e4b88fc5480d55dcaba/run/evalrun_cd7fec52a0964deda9a5b9a52d82e06b
+      resultCounts:
+        total: 4
+        passed: 4
+        failed: 0
+        errored: 0
+      issueClusters: []
+      previousRuns:
+        - evalId: eval_8507ebec7ca64bb3ae3fa2fa5ab7e12d
+          evalRunId: evalrun_42d6352d81434e39b7217f2d585ccc59
+          status: completed
+          resultFile: .foundry/results/foundry-llmops-v1d8/eval_8507ebec7ca64bb3ae3fa2fa5ab7e12d/evalrun_42d6352d81434e39b7217f2d585ccc59.json
+          resultCounts:
+            total: 4
+            passed: 4
+            failed: 0
+            errored: 0
+          issueClusters: []
+        - evalId: eval_ca5795211fc04391853f48e3e0d60e93
+          evalRunId: evalrun_dd5d17fda1844931ba12c139ebb043d7
+          status: completed
+          resultFile: .foundry/results/foundry-llmops-v1d8/eval_ca5795211fc04391853f48e3e0d60e93/evalrun_dd5d17fda1844931ba12c139ebb043d7.json
+          resultCounts:
+            total: 4
+            passed: 4
+            failed: 0
+            errored: 0
+          issueClusters:
+            - category: evaluator-data-mapping
+              evaluator: builtin.tool_call_accuracy
+              count: 4
+              errorCode: FAILED_EXECUTION
+              reason: evaluator mapping read sample.tool_definitions instead of item.tool_definitions
+        - evalRunId: evalrun_5817981ae60747978d08b21cd372add4
+          status: completed
+          resultFile: .foundry/results/foundry-llmops-v1d8/eval_ca5795211fc04391853f48e3e0d60e93/evalrun_5817981ae60747978d08b21cd372add4.json
+          resultCounts:
+            total: 4
+            passed: 4
+            failed: 0
+            errored: 0
+          issueClusters:
+            - category: evaluator-configuration
+              evaluator: builtin.tool_call_accuracy
+              count: 4
+              errorCode: FAILED_EXECUTION
+              reason: target tool descriptions were not propagated by the azd eval runner

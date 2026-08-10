@@ -1,0 +1,14 @@
+dependencies
+| where timestamp > ago(24h)
+| extend
+    operation = tostring(customDimensions["gen_ai.operation.name"]),
+    scenario = tostring(customDimensions["llmops.scenario"])
+| where operation in ("invoke_agent", "chat", "retrieve", "execute_tool")
+| summarize
+    calls = count(),
+    averageDuration = avg(duration),
+    p50Duration = percentile(duration, 50),
+    p95Duration = percentile(duration, 95),
+    maxDuration = max(duration)
+  by operation, scenario, bin(timestamp, 15m)
+| order by timestamp desc, p95Duration desc

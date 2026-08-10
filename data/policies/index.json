@@ -1,0 +1,20 @@
+[
+  {
+    "document_id": "travel-expense-policy",
+    "title": "国内出張旅費規程",
+    "version": "2026-07-01",
+    "effective_date": "2026-07-01",
+    "status": "current",
+    "path": "current.md",
+    "reimbursement_days": 30
+  },
+  {
+    "document_id": "travel-expense-policy",
+    "title": "国内出張旅費規程（旧版）",
+    "version": "2025-04-01",
+    "effective_date": "2025-04-01",
+    "status": "superseded",
+    "path": "superseded.md",
+    "reimbursement_days": 14
+  }
+]

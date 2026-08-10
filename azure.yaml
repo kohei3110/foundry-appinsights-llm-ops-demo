@@ -1,0 +1,53 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+requiredVersions:
+    extensions:
+        azure.ai.agents: '>=0.1.0-preview'
+name: foundry-appinsights-llm-ops-demo
+metadata:
+    template: foundry-hosted-agent-with-sre-observability@0.2.0
+services:
+    ai-project:
+        host: azure.ai.project
+        deployments:
+            - model:
+                format: OpenAI
+                name: gpt-5.4-mini
+                version: "2026-03-17"
+              name: gpt-5.4-mini
+              sku:
+                capacity: 10
+                name: GlobalStandard
+    policy-agent:
+        project: src/policy-agent
+        host: azure.ai.agent
+        language: docker
+        uses:
+            - ai-project
+        env:
+            AZURE_AI_MODEL_DEPLOYMENT_NAME: gpt-5.4-mini
+            AZURE_EXECUTION_ENVIRONMENT: foundry
+            LLMOPS_CAPTURE_CONTENT: "false"
+            LLMOPS_DATA_ROOT: data
+        container:
+            resources:
+                cpu: "0.5"
+                memory: 1Gi
+        description: Japanese policy agent with deterministic failure scenarios, SRE investigation, and Observability next-action handoff.
+        displayName: Japanese Policy LLM Ops Agent
+        kind: hosted
+        name: policy-agent
+        protocols:
+            - protocol: responses
+              version: 2.0.0
+        startupCommand: python main.py
+    web:
+        project: .
+        host: containerapp
+        language: python
+        docker:
+            path: src/web/Dockerfile
+            context: .
+infra:
+    provider: bicep
+    path: ./infra

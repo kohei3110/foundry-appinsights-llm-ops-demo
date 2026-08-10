@@ -1,0 +1,16 @@
+dependencies
+| where timestamp > ago(24h)
+| where customDimensions["gen_ai.operation.name"] == "chat"
+| extend
+    model = tostring(customDimensions["gen_ai.request.model"]),
+    scenario = tostring(customDimensions["llmops.scenario"]),
+    inputTokens = toint(customDimensions["gen_ai.usage.input_tokens"]),
+    outputTokens = toint(customDimensions["gen_ai.usage.output_tokens"])
+| summarize
+    calls = count(),
+    totalInputTokens = sum(inputTokens),
+    totalOutputTokens = sum(outputTokens),
+    averageInputTokens = avg(inputTokens),
+    averageOutputTokens = avg(outputTokens)
+  by model, scenario
+| order by totalInputTokens desc

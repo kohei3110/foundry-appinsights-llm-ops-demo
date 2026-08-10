@@ -1,0 +1,27 @@
+let targetTraceId = "<trace-id>";
+union withsource=tableName requests, dependencies, traces, exceptions
+| where timestamp > ago(24h)
+| where operation_Id == targetTraceId
+| extend
+    operation = tostring(customDimensions["gen_ai.operation.name"]),
+    scenario = tostring(customDimensions["llmops.scenario"]),
+    mode = tostring(customDimensions["llmops.mode"]),
+    errorType = tostring(customDimensions["error.type"]),
+    policyVersion = tostring(customDimensions["llmops.policy.version"]),
+    policyStatus = tostring(customDimensions["llmops.policy.status"]),
+    toolName = tostring(customDimensions["gen_ai.tool.name"])
+| project
+    timestamp,
+    tableName,
+    operation,
+    scenario,
+    mode,
+    duration,
+    success,
+    errorType,
+    policyVersion,
+    policyStatus,
+    toolName,
+    id,
+    operation_ParentId
+| order by timestamp asc

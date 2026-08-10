@@ -1,0 +1,7 @@
+.env
+.foundry
+.venv
+__pycache__
+*.py[cod]
+.pytest_cache
+eval.yaml

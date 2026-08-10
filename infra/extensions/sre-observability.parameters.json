@@ -1,0 +1,18 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "applicationInsightsResourceId": {
+      "value": "${APPLICATIONINSIGHTS_RESOURCE_ID}"
+    },
+    "logAnalyticsWorkspaceResourceId": {
+      "value": "${AZURE_LOG_ANALYTICS_WORKSPACE_RESOURCE_ID}"
+    },
+    "containerAppName": {
+      "value": "${WEB_SERVICE_NAME}"
+    }
+  }
+}

@@ -1,0 +1,16 @@
+let responseId = "<response-id>";
+let conversationId = "<conversation-id>";
+customEvents
+| where timestamp > ago(30d)
+| where name == "gen_ai.evaluation.result"
+| where customDimensions["gen_ai.response.id"] == responseId
+    or customDimensions["gen_ai.conversation.id"] == conversationId
+| extend
+    evaluator = tostring(customDimensions["gen_ai.evaluation.name"]),
+    score = todouble(customDimensions["gen_ai.evaluation.score.value"]),
+    label = tostring(customDimensions["gen_ai.evaluation.score.label"]),
+    explanation = tostring(customDimensions["gen_ai.evaluation.explanation"]),
+    correlatedResponseId = tostring(customDimensions["gen_ai.response.id"]),
+    correlatedConversationId = tostring(customDimensions["gen_ai.conversation.id"])
+| project timestamp, evaluator, score, label, explanation, correlatedResponseId, correlatedConversationId, operation_Id
+| order by timestamp desc, evaluator asc

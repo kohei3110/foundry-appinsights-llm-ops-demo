@@ -1,0 +1,30 @@
+let agentName = "policy-agent";
+let agentRequests = materialize(
+    requests
+    | where timestamp > ago(24h)
+    | extend
+        foundryAgentName = coalesce(
+            tostring(customDimensions["gen_ai.agent.name"]),
+            tostring(customDimensions["azure.ai.agentserver.agent_name"])
+        ),
+        agentId = tostring(customDimensions["gen_ai.agent.id"]),
+        conversationId = coalesce(
+            tostring(customDimensions["gen_ai.conversation.id"]),
+            tostring(customDimensions["azure.ai.agentserver.conversation_id"]),
+            operation_Id
+        )
+    | where foundryAgentName == agentName or tostring(split(agentId, ":")[0]) == agentName
+    | project operation_Id, conversationId
+);
+dependencies
+| where timestamp > ago(24h)
+| where isnotempty(customDimensions["gen_ai.operation.name"])
+| join kind=inner agentRequests on operation_Id
+| summarize
+    calls = count(),
+    errors = countif(success == false),
+    p95Duration = percentile(duration, 95),
+    inputTokens = sum(toint(customDimensions["gen_ai.usage.input_tokens"])),
+    outputTokens = sum(toint(customDimensions["gen_ai.usage.output_tokens"]))
+  by bin(timestamp, 15m)
+| order by timestamp desc

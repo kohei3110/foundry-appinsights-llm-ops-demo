@@ -1,0 +1,17 @@
+name: policy-agent-regression
+agent:
+  name: policy-agent
+  version: "6"
+dataset:
+  local_uri: ../../data/evaluation/policy_agent_hosted_eval.jsonl
+evaluators:
+  - builtin.relevance
+  - builtin.task_adherence
+  - builtin.intent_resolution
+  - builtin.tool_call_accuracy
+options:
+  eval_model: gpt-5.4-mini
+  pass_threshold: 0.8
+  max_samples: 20
+  trace_days: 7
+generation_instruction: Evaluate Japanese policy version selection, request-status tool reliability, latency, and source reporting.

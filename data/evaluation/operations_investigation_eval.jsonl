@@ -1,0 +1,3 @@
+{"id":"sre-stale-policy","mode":"simulation","scenario":"stale_policy","expected_root_cause_contains":"現行版フィルター","expected_evidence_signals":["policy_version","policy_status","model_health"],"expected_action_contains":"現行規程","approval_required":true}
+{"id":"sre-slow-tool","mode":"simulation","scenario":"slow_tool","expected_root_cause_contains":"request-status","expected_evidence_signals":["execute_tool_duration","model_duration","container_health"],"expected_action_contains":"タイムアウト","approval_required":true}
+{"id":"sre-tool-failure","mode":"simulation","scenario":"tool_failure","expected_root_cause_contains":"利用不能","expected_evidence_signals":["dependency_failure","request_status","platform_health"],"expected_action_contains":"切り離し","approval_required":true}
