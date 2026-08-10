@@ -63,8 +63,8 @@ class AnswerService:
                     code = exc.code
                     retryable = exc.retryable
                 else:
-                    code = "request_status_failure"
-                    retryable = True
+                    code = exc.code
+                    retryable = exc.retryable
                 span.set_attribute("gen_ai.response.id", response_id)
                 span.set_attribute("error.type", code)
                 span.set_status(Status(StatusCode.ERROR, str(exc)))

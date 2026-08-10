@@ -7,7 +7,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 
-from policy_agent.models import AskRequest, RuntimeMode, Scenario
+from policy_agent.models import AnswerStatus, AskRequest, RuntimeMode, Scenario
 from policy_agent.providers import SimulationProvider
 from policy_agent.repository import PolicyRepository
 from policy_agent.service import AnswerService
@@ -88,3 +88,41 @@ async def test_genai_span_attributes_and_content_default(settings):
     assert chat_attributes["gen_ai.usage.input_tokens"] > 0
     assert "gen_ai.input.messages" not in chat_attributes
     assert "gen_ai.output.messages" not in chat_attributes
+
+
+async def test_tool_failure_records_structured_dependency_failure(settings):
+    configure_telemetry(settings)
+    exporter = InMemorySpanExporter()
+    processor = SimpleSpanProcessor(exporter)
+    provider = trace.get_tracer_provider()
+    provider.add_span_processor(processor)
+
+    repository = PolicyRepository(settings.data_root)
+    service = AnswerService(
+        {
+            RuntimeMode.SIMULATION: SimulationProvider(
+                settings,
+                repository,
+                RequestStatusTool(settings.data_root, 0),
+            )
+        }
+    )
+
+    response = await service.answer(
+        AskRequest(
+            question="精算期限は？",
+            scenario=Scenario.TOOL_FAILURE,
+            conversation_id="conv_tool_failure",
+        )
+    )
+    spans = {span.name: span for span in exporter.get_finished_spans()}
+    tool_span = spans["execute_tool request_status"]
+
+    assert response.status is AnswerStatus.ERROR
+    assert response.answer is None
+    assert response.error.code == "request_status_failure"
+    assert tool_span.status.is_ok is False
+    assert tool_span.attributes["error.type"] == "request_status_failure"
+    assert tool_span.attributes["llmops.mode"] == "simulation"
+    assert tool_span.attributes["llmops.scenario"] == "tool_failure"
+    assert tool_span.attributes["llmops.request.id"] == "REQ-2026-0042"
