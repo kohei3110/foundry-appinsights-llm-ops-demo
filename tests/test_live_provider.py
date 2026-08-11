@@ -1,4 +1,4 @@
-from policy_agent.models import AnswerStatus, AskRequest, RuntimeMode
+from policy_agent.models import AnswerStatus, AskRequest, RuntimeMode, Scenario
 from policy_agent.providers import (
     LiveFoundryProvider,
     SimulationProvider,
@@ -106,6 +106,7 @@ async def test_live_invocation_uses_hosted_agent_client(settings):
     )
 
     assert result.response_id == "resp_test"
+    assert result.sources[0].status == "current"
     assert client.responses.kwargs == {
         "input": (
             "Conversation ID: conv_test\n"
@@ -114,6 +115,32 @@ async def test_live_invocation_uses_hosted_agent_client(settings):
             "Question: 精算期限は？"
         )
     }
+
+
+async def test_live_stale_scenario_still_uses_current_policy_source(settings):
+    configured = settings.model_copy(
+        update={
+            "foundry_project_endpoint": (
+                "https://example.services.ai.azure.com/api/projects/demo"
+            ),
+            "foundry_agent_name": "policy-agent",
+        }
+    )
+    repository = PolicyRepository(configured.data_root)
+    provider = LiveFoundryProvider(
+        configured, repository, client=RecordingClient()
+    )
+
+    result = await provider.answer(
+        AskRequest(
+            question="精算期限は？",
+            mode=RuntimeMode.LIVE,
+            scenario=Scenario.STALE_POLICY,
+        ),
+        "conv_test",
+    )
+
+    assert result.sources[0].status == "current"
 
 
 async def test_live_failure_never_falls_back_to_simulation(settings):
@@ -151,3 +178,40 @@ async def test_live_failure_never_falls_back_to_simulation(settings):
     assert response.error.code == "live_provider_failure"
     assert "synthetic Foundry outage" in response.error.message
     assert simulation.calls == 0
+
+
+async def test_live_returns_structured_unavailability_when_no_current_policy(
+    settings,
+):
+    configured = settings.model_copy(
+        update={
+            "foundry_project_endpoint": (
+                "https://example.services.ai.azure.com/api/projects/demo"
+            ),
+            "foundry_agent_name": "policy-agent",
+        }
+    )
+    repository = PolicyRepository(configured.data_root)
+    repository._documents = [
+        document
+        for document in repository._documents
+        if document.status == "superseded"
+    ]
+    service = AnswerService(
+        {
+            RuntimeMode.LIVE: LiveFoundryProvider(
+                configured, repository, client=RecordingClient()
+            )
+        }
+    )
+
+    response = await service.answer(
+        AskRequest(
+            question="精算期限は？",
+            mode=RuntimeMode.LIVE,
+        )
+    )
+
+    assert response.status is AnswerStatus.ERROR
+    assert response.error.code == "answer_unavailable"
+    assert "No current policy document is configured" in response.error.message

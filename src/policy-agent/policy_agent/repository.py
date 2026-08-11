@@ -49,9 +49,18 @@ class PolicyRepository:
             for row in rows
         ]
 
-    def select(self, scenario: Scenario) -> PolicyDocument:
+    def select(
+        self,
+        scenario: Scenario,
+        mode: RuntimeMode = RuntimeMode.SIMULATION,
+    ) -> PolicyDocument:
         desired_status = (
-            "superseded" if scenario is Scenario.STALE_POLICY else "current"
+            "superseded"
+            if (
+                mode is RuntimeMode.SIMULATION
+                and scenario is Scenario.STALE_POLICY
+            )
+            else "current"
         )
         matching = [
             document
@@ -80,7 +89,7 @@ class PolicyRepository:
                 "llmops.retrieval.query_length": len(question),
             },
         ) as span:
-            document = self.select(scenario)
+            document = self.select(scenario, mode)
             span.set_attribute("llmops.policy.document_id", document.document_id)
             span.set_attribute("llmops.policy.version", document.version)
             span.set_attribute("llmops.policy.status", document.status)
