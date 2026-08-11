@@ -59,9 +59,15 @@ class SimulationProvider:
                 "llmops.scenario": request.scenario.value,
             },
         ) as invoke_span:
-            document = self._repository.retrieve(
-                request.question, request.scenario, self.mode
-            )
+            try:
+                document = self._repository.retrieve(
+                    request.question, request.scenario, self.mode
+                )
+            except LookupError as exc:
+                raise ProviderError(
+                    "answer_unavailable",
+                    str(exc),
+                ) from exc
             status = await self._status_tool.execute(
                 request.request_id, request.scenario, self.mode
             )
@@ -214,7 +220,18 @@ class LiveFoundryProvider:
             input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
             output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
             answer = str(response.output_text)
-            document = self._repository.select(request.scenario)
+            try:
+                document = self._repository.select(
+                    request.scenario, self.mode
+                )
+            except LookupError as exc:
+                span.set_attribute("error.type", "answer_unavailable")
+                span.set_status(Status(StatusCode.ERROR, str(exc)))
+                span.record_exception(exc)
+                raise ProviderError(
+                    "answer_unavailable",
+                    str(exc),
+                ) from exc
 
             span.set_attribute("gen_ai.response.id", response_id)
             span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
