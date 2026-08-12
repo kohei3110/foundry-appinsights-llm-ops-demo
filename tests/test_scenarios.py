@@ -74,3 +74,4 @@ async def test_tool_failure_returns_structured_error(settings):
     assert response.error.code == "request_status_failure"
     assert response.error.retryable is True
     assert response.answer is None
+    assert response.error.message == "The request-status dependency is unavailable"

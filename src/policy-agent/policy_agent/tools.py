@@ -11,7 +11,10 @@ from policy_agent.telemetry import get_tracer
 
 
 class RequestStatusToolError(RuntimeError):
-    pass
+    def __init__(self, code: str, message: str, *, retryable: bool) -> None:
+        super().__init__(message)
+        self.code = code
+        self.retryable = retryable
 
 
 class RequestStatusTool:
@@ -43,9 +46,11 @@ class RequestStatusTool:
 
             if scenario is Scenario.TOOL_FAILURE:
                 error = RequestStatusToolError(
-                    "The simulated request-status dependency is unavailable"
+                    "request_status_failure",
+                    "The request-status dependency is unavailable",
+                    retryable=True,
                 )
-                span.set_attribute("error.type", "request_status_unavailable")
+                span.set_attribute("error.type", error.code)
                 span.set_status(Status(StatusCode.ERROR, str(error)))
                 span.record_exception(error)
                 raise error
@@ -53,9 +58,11 @@ class RequestStatusTool:
             statuses = json.loads(self._statuses_path.read_text(encoding="utf-8"))
             if request_id not in statuses:
                 error = RequestStatusToolError(
-                    f"Request status not found for {request_id}"
+                    "request_status_not_found",
+                    f"Request status not found for {request_id}",
+                    retryable=False,
                 )
-                span.set_attribute("error.type", "request_status_not_found")
+                span.set_attribute("error.type", error.code)
                 span.set_status(Status(StatusCode.ERROR, str(error)))
                 span.record_exception(error)
                 raise error
