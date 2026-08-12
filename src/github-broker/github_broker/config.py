@@ -31,7 +31,7 @@ class BrokerSettings(BaseSettings):
         "kohei3110",
         validation_alias="GITHUB_BROKER_OWNER",
     )
-    github_repository: Literal[
+    target_repository: Literal[
         "foundry-appinsights-llm-ops-demo"
     ] = Field(
         "foundry-appinsights-llm-ops-demo",
@@ -95,7 +95,7 @@ class BrokerSettings(BaseSettings):
 
     @property
     def repository_full_name(self) -> str:
-        return f"{self.github_owner}/{self.github_repository}"
+        return f"{self.github_owner}/{self.target_repository}"
 
     @property
     def is_azure(self) -> bool:

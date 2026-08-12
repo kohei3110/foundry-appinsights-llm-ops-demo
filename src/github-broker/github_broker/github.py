@@ -114,7 +114,7 @@ class GitHubClient:
                 "GET",
                 (
                     f"/repos/{self._settings.github_owner}/"
-                    f"{self._settings.github_repository}/issues"
+                    f"{self._settings.target_repository}/issues"
                 ),
                 params={"state": "open", "per_page": 100, "page": page},
             )
@@ -149,7 +149,7 @@ class GitHubClient:
             "POST",
             (
                 f"/repos/{self._settings.github_owner}/"
-                f"{self._settings.github_repository}/issues"
+                f"{self._settings.target_repository}/issues"
             ),
             json_body={"title": title, "body": body},
         )
@@ -167,7 +167,7 @@ class GitHubClient:
             "GET",
             (
                 f"/repos/{self._settings.github_owner}/"
-                f"{self._settings.github_repository}/issues/{issue_number}"
+                f"{self._settings.target_repository}/issues/{issue_number}"
             ),
         )
         return GitHubIssue.model_validate(response.json())
@@ -181,7 +181,7 @@ class GitHubClient:
             "POST",
             (
                 f"/repos/{self._settings.github_owner}/"
-                f"{self._settings.github_repository}/issues/"
+                f"{self._settings.target_repository}/issues/"
                 f"{issue_number}/assignees"
             ),
             json_body={
@@ -207,7 +207,7 @@ class GitHubClient:
                 "GET",
                 (
                     f"/repos/{self._settings.github_owner}/"
-                    f"{self._settings.github_repository}/issues/"
+                    f"{self._settings.target_repository}/issues/"
                     f"{issue_number}/timeline"
                 ),
                 params={"per_page": 100, "page": page},
@@ -266,7 +266,7 @@ class GitHubClient:
             "GET",
             (
                 f"/repos/{self._settings.github_owner}/"
-                f"{self._settings.github_repository}/pulls/"
+                f"{self._settings.target_repository}/pulls/"
                 f"{pull_request_number}"
             ),
         )

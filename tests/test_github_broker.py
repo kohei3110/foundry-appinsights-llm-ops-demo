@@ -79,6 +79,19 @@ def _handoff_payload() -> dict[str, object]:
     }
 
 
+def test_github_actions_repository_env_does_not_override_broker_target(
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        "GITHUB_REPOSITORY",
+        "kohei3110/foundry-appinsights-llm-ops-demo",
+    )
+
+    settings = BrokerSettings(_env_file=None)
+
+    assert settings.target_repository == "foundry-appinsights-llm-ops-demo"
+
+
 class FakeGitHubClient:
     def __init__(self) -> None:
         self.issue: GitHubIssue | None = None
