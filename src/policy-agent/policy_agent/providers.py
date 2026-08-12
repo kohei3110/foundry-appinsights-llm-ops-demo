@@ -177,6 +177,7 @@ class LiveFoundryProvider:
                 "llmops.scenario": request.scenario.value,
             },
         ) as span:
+            document = self._repository.select(request.scenario)
             prompt = (
                 f"Conversation ID: {conversation_id}\n"
                 f"Scenario: {request.scenario.value}\n"
@@ -214,8 +215,6 @@ class LiveFoundryProvider:
             input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
             output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
             answer = str(response.output_text)
-            document = self._repository.select(request.scenario)
-
             span.set_attribute("gen_ai.response.id", response_id)
             span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
             span.set_attribute("gen_ai.usage.output_tokens", output_tokens)
