@@ -109,4 +109,5 @@ async def test_live_tool_failure_span_records_dependency_error_type(settings):
     spans = {span.name: span for span in exporter.get_finished_spans()}
     attributes = spans["execute_tool request_status"].attributes
     assert attributes["error.type"] == "request_status_unavailable"
+    assert attributes["llmops.tool.error.retryable"] is True
     assert attributes["llmops.mode"] == "live"
