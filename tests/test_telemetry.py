@@ -1,6 +1,8 @@
 import logging
 import os
 
+import pytest
+
 from opentelemetry import trace
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
@@ -12,7 +14,7 @@ from policy_agent.providers import SimulationProvider
 from policy_agent.repository import PolicyRepository
 from policy_agent.service import AnswerService
 from policy_agent.telemetry import configure_content_logging, configure_telemetry
-from policy_agent.tools import RequestStatusTool
+from policy_agent.tools import RequestStatusTool, RequestStatusToolError
 
 
 def test_framework_content_logging_follows_capture_setting(settings):
@@ -88,3 +90,24 @@ async def test_genai_span_attributes_and_content_default(settings):
     assert chat_attributes["gen_ai.usage.input_tokens"] > 0
     assert "gen_ai.input.messages" not in chat_attributes
     assert "gen_ai.output.messages" not in chat_attributes
+
+
+async def test_live_tool_failure_span_records_dependency_error_type(settings):
+    configure_telemetry(settings)
+    exporter = InMemorySpanExporter()
+    processor = SimpleSpanProcessor(exporter)
+    trace.get_tracer_provider().add_span_processor(processor)
+
+    tool = RequestStatusTool(settings.data_root, 0)
+    with pytest.raises(RequestStatusToolError) as failure:
+        await tool.execute(
+            "REQ-2026-0042", Scenario.TOOL_FAILURE, RuntimeMode.LIVE
+        )
+
+    assert failure.value.code == "request_status_unavailable"
+    assert "simulated" not in str(failure.value)
+    spans = {span.name: span for span in exporter.get_finished_spans()}
+    attributes = spans["execute_tool request_status"].attributes
+    assert attributes["error.type"] == "request_status_unavailable"
+    assert attributes["llmops.tool.error.retryable"] is True
+    assert attributes["llmops.mode"] == "live"

@@ -9,9 +9,21 @@ from opentelemetry.trace import SpanKind, Status, StatusCode
 from policy_agent.models import RuntimeMode, Scenario
 from policy_agent.telemetry import get_tracer
 
+REQUEST_STATUS_UNAVAILABLE = "request_status_unavailable"
+REQUEST_STATUS_NOT_FOUND = "request_status_not_found"
+
 
 class RequestStatusToolError(RuntimeError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = REQUEST_STATUS_UNAVAILABLE,
+        retryable: bool = True,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.retryable = retryable
 
 
 class RequestStatusTool:
@@ -42,24 +54,52 @@ class RequestStatusTool:
                 await asyncio.sleep(self._slow_delay_seconds)
 
             if scenario is Scenario.TOOL_FAILURE:
-                error = RequestStatusToolError(
-                    "The simulated request-status dependency is unavailable"
+                qualifier = (
+                    "simulated " if mode is RuntimeMode.SIMULATION else ""
                 )
-                span.set_attribute("error.type", "request_status_unavailable")
-                span.set_status(Status(StatusCode.ERROR, str(error)))
-                span.record_exception(error)
-                raise error
+                raise self._fail(
+                    span,
+                    REQUEST_STATUS_UNAVAILABLE,
+                    f"The {qualifier}request-status dependency is unavailable",
+                )
 
-            statuses = json.loads(self._statuses_path.read_text(encoding="utf-8"))
-            if request_id not in statuses:
-                error = RequestStatusToolError(
-                    f"Request status not found for {request_id}"
+            try:
+                statuses = json.loads(
+                    self._statuses_path.read_text(encoding="utf-8")
                 )
-                span.set_attribute("error.type", "request_status_not_found")
-                span.set_status(Status(StatusCode.ERROR, str(error)))
-                span.record_exception(error)
-                raise error
+            except (OSError, json.JSONDecodeError) as exc:
+                raise self._fail(
+                    span,
+                    REQUEST_STATUS_UNAVAILABLE,
+                    "The request-status dependency is unavailable: "
+                    f"{type(exc).__name__}",
+                ) from exc
+
+            if request_id not in statuses:
+                raise self._fail(
+                    span,
+                    REQUEST_STATUS_NOT_FOUND,
+                    f"Request status not found for {request_id}",
+                    retryable=False,
+                )
 
             result = statuses[request_id]
             span.set_attribute("llmops.tool.result_status", result["status"])
             return result
+
+    @staticmethod
+    def _fail(
+        span,
+        code: str,
+        message: str,
+        *,
+        retryable: bool = True,
+    ) -> RequestStatusToolError:
+        error = RequestStatusToolError(
+            f"[{code}] {message}", code=code, retryable=retryable
+        )
+        span.set_attribute("error.type", code)
+        span.set_attribute("llmops.tool.error.retryable", retryable)
+        span.set_status(Status(StatusCode.ERROR, str(error)))
+        span.record_exception(error)
+        return error
