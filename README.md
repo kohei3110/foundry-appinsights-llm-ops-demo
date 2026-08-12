@@ -8,7 +8,9 @@ This project demonstrates an end-to-end LLM operations loop with a Japanese poli
 4. Diagnose request, retrieval, model, and tool spans in Application Insights.
 5. Re-run the same evaluation cases and compare before/after quality and latency.
 6. Ask Azure SRE Agent to investigate the correlated Azure evidence.
-7. Use Azure Copilot Observability Agent issues to prioritize human-reviewed next actions.
+7. Send a strict sanitized contract to the deterministic handoff broker.
+8. Create a GitHub issue and assign Copilot automatically.
+9. Use Azure Copilot Observability Agent issues to prioritize other human-reviewed next actions.
 
 The repository is safe to run without Azure in `simulation` mode. `live` mode calls a Microsoft Foundry hosted agent and **never falls back** to simulation.
 
@@ -21,6 +23,7 @@ The repository is safe to run without Azure in `simulation` mode. `live` mode ca
 | Model | `gpt-5.4-mini` version `2026-03-17`, GlobalStandard capacity 10 |
 | Telemetry | OpenTelemetry GenAI semantic conventions to Application Insights |
 | SRE investigation | Azure SRE Agent in read-only mode |
+| Code remediation | Deterministic broker, automatic GitHub issue, Copilot draft PR |
 | Operational next action | Azure Copilot Observability Agent issue and deep investigation |
 | Infrastructure | AZD + Bicep, Japan East, AVM modules |
 | Data | Synthetic Japanese policies and request records |
@@ -103,6 +106,40 @@ Both Azure SRE Agent and Azure Copilot Observability Agent remain human-controll
 
 The complete Japanese presenter runbook is available at [`docs/demo-script.md`](docs/demo-script.md). It includes pre-demo checks, expected results for every scenario, live SRE/Observability steps, the on-demand investigation fallback, and a shortened 12–15 minute flow.
 
+## Automatic GitHub remediation handoff
+
+Azure Monitor uses the scheduled query rule name in the incident title, not the rule `displayName`. The versioned response plans therefore match `llmops-live-stale-policy` and `llmops-live-tool-failure`. Their definitions are in [`infra/sre-agent/incident-plans.json`](infra/sre-agent/incident-plans.json), and the complete cutover runbook is in [`docs/sre-github-handoff.md`](docs/sre-github-handoff.md).
+
+Azure SRE Agent stays `ReadOnly` and both plans stay in `Review` mode. It can call only two pre-authorized tools on the dedicated broker:
+
+- `github-handoff-broker_submit_incident_handoff`
+- `github-handoff-broker_get_handoff_status`
+
+The broker is an isolated FastAPI/MCP Container App under [`src/github-broker/`](src/github-broker/). It accepts only bearer-authenticated, Azure-verified `live` alerts and fixed enum codes; rejects all free-form public prose and extra fields; generates the issue from server-side templates; creates an idempotent fingerprinted issue; and invokes GitHub's official Copilot issue-assignment API. SRE Agent never receives a GitHub write credential and direct GitHub write tools remain globally denied.
+
+`GITHUB_BROKER_TOKEN` must be a fine-grained PAT or GitHub App **user access token** scoped only to this repository with Metadata read and Actions, Contents, Issues, and Pull requests write permissions. GitHub App installation access tokens are not supported by the Copilot assignment API.
+
+Issue creation and Copilot assignment require no per-incident human approval after this bounded broker is enabled. The resulting pull request remains Draft; required CI, review, merge, and deployment remain human-controlled.
+
+Validate and render the post-deployment response-plan parameters without changing Azure:
+
+```bash
+python scripts/sre_plan_config.py
+python scripts/sre_plan_config.py --emit-global-policy
+python scripts/sre_plan_config.py \
+  --emit-broker-connector \
+  --broker-endpoint "$GITHUB_HANDOFF_BROKER_URL"
+python scripts/sre_plan_config.py \
+  --emit-tool-parameters \
+  --subscription "$AZURE_SUBSCRIPTION_ID" \
+  --resource-group "$AZURE_RESOURCE_GROUP" \
+  --agent "$SRE_AGENT_NAME"
+```
+
+Apply the rendered objects only after the broker is deployed, `/readyz` succeeds, and the repository-scoped credential is verified. Connectors, Tool Access Policies, and response plans are SRE Agent data-plane configuration and are not represented by the `Microsoft.App/agents` ARM resource.
+
+For an existing plan, `sreagent_incidents_plans_create` returns a conflict rather than updating it. Render the handler update bodies with `python scripts/sre_plan_config.py --emit-handler-payloads`, then update the existing handlers as described in the handoff runbook.
+
 ## Telemetry
 
 The application creates spans with these operations:
@@ -150,11 +187,14 @@ python -m pytest
 
 Focused coverage includes version selection, all four scenarios, correlation headers, strict live failure behavior, telemetry attributes and content defaults, health/readiness, and evaluation comparison.
 
+Pull requests also run [`.github/workflows/ci.yml`](.github/workflows/ci.yml), which executes the Python suite, validates the SRE incident-plan contract, and builds both Bicep entry points. Configure the `main` branch ruleset to require the `Python tests` and `Bicep build` checks plus one approving review before merge.
+
 ## Docker
 
 ```bash
 docker build -f src/web/Dockerfile -t foundry-llmops-demo:local .
 docker run --rm -p 8000:8000 foundry-llmops-demo:local
+docker build -f src/github-broker/Dockerfile -t sre-github-broker:local .
 ```
 
 ## Azure artifacts
@@ -162,7 +202,7 @@ docker run --rm -p 8000:8000 foundry-llmops-demo:local
 - `azure.yaml` defines the `azure.ai.project`, `azure.ai.agent`, and Container Apps services.
 - `infra/main.bicep` is the subscription-scope entry point.
 - `infra/modules/resources.bicep` uses pinned Azure Verified Modules for the Foundry account/model, Log Analytics, Application Insights, ACR, managed environment, and Container App.
-- The Container App scales from zero to one replica and uses system-assigned managed identity.
+- The web Container App scales from zero to one replica. The broker keeps one warm replica for alert-time handoffs and uses system- plus user-assigned managed identities.
 - ACR admin access is disabled.
 - Foundry User and AcrPull are scoped to the web application identity.
 - The same Application Insights connection string is injected into the web and hosted-agent services.
@@ -170,9 +210,10 @@ docker run --rm -p 8000:8000 foundry-llmops-demo:local
 - Azure Copilot Observability Agent and its Azure Monitor workspace run in East Asia. The monitored resource is the workload Application Insights component.
 - The Observability Agent identity has subscription-scope Monitoring Reader to enumerate fired alerts and Issue Contributor only on its Azure Monitor workspace.
 - Live stale-policy retrieval and request-status failures create scheduled-query alerts for autonomous issue correlation.
+- The GitHub broker is disabled until its dedicated Key Vault contains both secrets and `githubHandoffEnabled=true`.
 - SRE and Observability features are preview services. Automatic Observability deep investigations are billable and should be enabled only after cost review.
 
-The Foundry policy agent and SRE/Observability extension are deployed. Live SRE investigations return real correlated evidence. Observability issue creation is asynchronous; the API returns HTTP 202 with `awaiting_issue` until the agent creates an issue and never substitutes simulated recommendations.
+The Foundry policy agent, SRE/Observability extension, and automatic GitHub broker are deployed. The broker uses Key Vault secrets, the live SRE plans expose only its two bounded tools, and direct GitHub tools are denied. A controlled live test created Issue #7 and Copilot Draft PR #8 automatically. Live SRE investigations return real correlated evidence; missing broker evidence or an uncreated PR is never replaced with simulated success.
 
 ## Validation
 
@@ -180,7 +221,9 @@ Safe local validation commands:
 
 ```bash
 python -m pytest
+python scripts/sre_plan_config.py
 az bicep build --file infra/main.bicep
+az bicep build --file infra/extensions/sre-observability.bicep
 AZURE_DEV_USER_AGENT=microsoft_foundry_skill azd config show
 git grep -nEi '(api[_-]?key|client[_-]?secret|password|connectionstring)[[:space:]]*[:=][[:space:]]*[^<$[:space:]]'
 ```

@@ -66,6 +66,26 @@
 - [ ] 推定原因と confidence
 - [ ] 書き込みコマンドや自動承認を使用していない
 
+## GitHub Issue / Copilot handoff
+
+- [ ] Incident plan の title filter がAlertの `displayName` ではなく、受信する rule name（`llmops-live-stale-policy` / `llmops-live-tool-failure`）と一致している
+- [ ] Incident plan が `Review` mode である
+- [ ] broker `/readyz` がHTTP 200で、未設定時の503を無視していない
+- [ ] broker managed identityにcanonical Alerts Management照会用のsubscription-scope Monitoring Readerがある
+- [ ] SRE Agentに公開するツールがbrokerの `submit_incident_handoff` と `get_handoff_status` だけである
+- [ ] direct/broad GitHub connectorの公開ツールが0件である
+- [ ] Tool Access Policyがbrokerの2ツールだけをAllowし、GitHub direct write/merge/push/update/deleteをDenyしている
+- [ ] brokerのfine-grained PATまたはGitHub App user access tokenが `kohei3110/foundry-appinsights-llm-ops-demo` だけへscopeされている
+- [ ] GitHub App installation access tokenやclassic `repo` tokenを使用していない
+- [ ] broker入力が`mode=live`とallowlisted enum codeだけで、自由文、schema外field、Trace ID、raw telemetry、content、資格情報を含まない
+- [ ] fingerprint付きの同じ正確なtitleのopen Issueを再利用し、Copilotを重複割り当てしていない
+- [ ] default quickstart response planが無効または削除済みで、同じAlertを並行処理しない
+- [ ] 公開IssueからTrace ID、resource ID、raw telemetry、プロンプト／出力本文、顧客データ、資格情報を除去している
+- [ ] Issue URL/number、Copilot assignment、Draft PR URL/numberを確認している
+- [ ] Issue未作成、assignment未完了、PR未作成、10分timeoutを成功として扱っていない
+- [ ] Copilotにmerge、deploy、workflow dispatch、Azure変更を許可していない
+- [ ] `main` で `Python tests`、`Bicep build`、1名以上の承認レビューを必須にしている
+
 ## Azure Copilot Observability Agent
 
 - [ ] Observability Agent resource と Azure Monitor workspace が同じリージョンにある
@@ -104,4 +124,5 @@ Issue が生成されない場合は、Alert、managed identity、monitored reso
 5. `05-evaluation-correlation.kql` で評価イベントと応答を関連付けます。
 6. `07-sre-investigation-evidence.kql` でSRE調査の証拠を再現します。
 7. `08-observability-alert-signals.kql` でIssue相関対象の信号を確認します。
-8. ライブ環境の設定を変更する前に、同じケースをシミュレーションモードで再現します。
+8. `python scripts/sre_plan_config.py` でGitHub handoff設定を検証します。
+9. ライブ環境の設定を変更する前に、同じケースをシミュレーションモードで再現します。

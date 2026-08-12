@@ -295,7 +295,7 @@ resource toolFailureAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = 
     criteria: {
       allOf: [
         {
-          query: 'dependencies | where timestamp > ago(5m) | where tostring(customDimensions["gen_ai.operation.name"]) == "execute_tool" | where tostring(customDimensions["llmops.mode"]) == "live" | where success == false or isnotempty(customDimensions["error.type"])'
+          query: 'dependencies | where timestamp > ago(5m) | where tostring(customDimensions["gen_ai.operation.name"]) == "execute_tool" | where tostring(customDimensions["gen_ai.tool.name"]) == "request_status" | where tostring(customDimensions["llmops.mode"]) == "live" | where tostring(customDimensions["error.type"]) == "request_status_unavailable"'
           timeAggregation: 'Count'
           operator: 'GreaterThan'
           threshold: 0

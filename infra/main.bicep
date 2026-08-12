@@ -35,6 +35,9 @@ param resourceGroupName string = 'rg-${environmentName}'
 @description('Model deployments marshalled from services.ai-project.deployments by the Foundry azd extension.')
 param aiProjectDeploymentsJson string = '[{"name":"gpt-5.4-mini","model":{"format":"OpenAI","name":"gpt-5.4-mini","version":"2026-03-17"},"sku":{"name":"GlobalStandard","capacity":10}}]'
 
+@description('Enables the broker after both required secrets are populated in its Key Vault.')
+param githubHandoffEnabled bool = false
+
 var tags = {
   'azd-env-name': environmentName
   workload: 'foundry-llmops-demo'
@@ -57,6 +60,7 @@ module resources './modules/resources.bicep' = {
     observabilityAgentLocation: observabilityAgentLocation
     tags: tags
     aiProjectDeployments: json(aiProjectDeploymentsJson)
+    githubHandoffEnabled: githubHandoffEnabled
   }
 }
 
@@ -78,3 +82,5 @@ output SRE_AGENT_ENDPOINT string = resources.outputs.sreAgentEndpoint
 output AZURE_MONITOR_ACCOUNT_ID string = resources.outputs.azureMonitorAccountId
 output OBSERVABILITY_AGENT_NAME string = resources.outputs.observabilityAgentName
 output WEB_URL string = resources.outputs.webUrl
+output GITHUB_HANDOFF_BROKER_URL string = resources.outputs.githubBrokerUrl
+output GITHUB_HANDOFF_KEY_VAULT_NAME string = resources.outputs.githubBrokerKeyVaultName

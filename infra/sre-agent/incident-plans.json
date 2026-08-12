@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 2,
+  "broker": {
+    "connector": "github-handoff-broker",
+    "endpointPath": "/mcp/github-handoff",
+    "bearerTokenEnvironment": "SRE_GITHUB_HANDOFF_BEARER_TOKEN",
+    "allowedTools": [
+      "github-handoff-broker_submit_incident_handoff",
+      "github-handoff-broker_get_handoff_status"
+    ],
+    "github": {
+      "owner": "kohei3110",
+      "repository": "foundry-appinsights-llm-ops-demo",
+      "baseBranch": "main",
+      "trustedIssueCreator": "kohei3110",
+      "credentialBoundary": {
+        "required": "fine-grained PAT or GitHub App user access token",
+        "repositories": [
+          "kohei3110/foundry-appinsights-llm-ops-demo"
+        ],
+        "permissions": {
+          "metadata": "read",
+          "actions": "write",
+          "contents": "write",
+          "issues": "write",
+          "pullRequests": "write"
+        },
+        "installationAccessTokenSupported": false
+      }
+    }
+  },
+  "toolAccessPolicy": {
+    "permissions": {
+      "allow": [
+        "github-handoff-broker_submit_incident_handoff",
+        "github-handoff-broker_get_handoff_status"
+      ],
+      "ask": [],
+      "deny": [
+        "*Merge*",
+        "*Workflow*",
+        "*PullRequest*",
+        "*pull_request*",
+        "*Repo*Write*",
+        "*repo_write*",
+        "github_*",
+        "github-direct_*",
+        "github-direct_issue_write",
+        "github-direct_assign_copilot_to_issue",
+        "github-direct_create_*",
+        "github-direct_delete_*",
+        "github-direct_fork_*",
+        "github-direct_merge_*",
+        "github-direct_push_*",
+        "github-direct_update_*"
+      ]
+    }
+  },
+  "plans": [
+    {
+      "name": "llmops-stale-policy-review",
+      "severity": "medium",
+      "trigger-condition": "llmops-live-stale-policy",
+      "services": [
+        "policy-agent"
+      ],
+      "handling-agent": "",
+      "merge-enabled": false,
+      "issue-title-prefix": "[SRE-AUTO][OPS-REVIEW] Fix stale-policy selection",
+      "steps": [
+        "Proceed only when the Azure Monitor alert title or alertRule contains the case-sensitive rule name llmops-live-stale-policy. Stop if it does not match or if the evidence is not from live mode.",
+        "Investigate Azure in read-only mode. Correlate the Application Insights trace, verify the current Container App revision only to rule out a platform failure, and inspect Activity Log only when the trace indicates a platform or configuration change. Collect at most three direct evidence items and never execute an Azure write operation.",
+        "Build the strict broker payload with no free-form public text: mode=live; alert_id copied exactly from the Azure Monitor incident card for broker-side Managed Identity verification and never published; alert_rule=llmops-live-stale-policy; one to three evidence_codes chosen only from superseded_policy_selected, model_call_succeeded, and container_revision_healthy; one to three ruled_out_codes; root_cause_code=stale_policy_filter_missing; and confidence_band. Set investigation_fingerprint to the first 12 lowercase hexadecimal characters of SHA-256 over alert_rule|root_cause_code|comma-separated evidence_codes sorted lexically. The broker recomputes it and generates all public prose from server-side templates. Omit every other trace ID, resource ID, raw telemetry, prompt or output content, customer data, credentials, tokens, and connection strings.",
+        "Call only github-handoff-broker_submit_incident_handoff once with the strict payload. The broker, not SRE Agent, performs the idempotent repository-scoped GitHub issue creation and official Copilot assignment. Never call a GitHub write tool directly.",
+        "If the broker returns copilot_assigned or copilot_already_assigned, call only github-handoff-broker_get_handoff_status with the returned issue_number at intervals of at least 30 seconds for at most 10 minutes. Report draft_pr_ready only when the broker returns a verified pull_request_url and pull_request_is_draft=true. If the broker returns incomplete, stop immediately. A timeout remains an incomplete asynchronous handoff, not success.",
+        "Do not create or edit repository files directly, merge a pull request, deploy, trigger a workflow, modify Azure, enable automatic Azure remediation, or represent missing evidence, an uncreated issue, an unassigned Copilot task, or an uncreated pull request as success."
+      ],
+      "escalation": "If live evidence is unavailable, broker validation fails, the broker is not configured, or a draft pull request is not verified within 10 minutes, stop and leave the incident incomplete for human review. Never substitute simulation evidence.",
+      "runbook-url": "https://github.com/kohei3110/foundry-appinsights-llm-ops-demo/blob/main/docs/sre-github-handoff.md",
+      "agent-mode": "review"
+    },
+    {
+      "name": "llmops-tool-failure-review",
+      "severity": "medium",
+      "trigger-condition": "llmops-live-tool-failure",
+      "services": [
+        "policy-agent"
+      ],
+      "handling-agent": "",
+      "merge-enabled": false,
+      "issue-title-prefix": "[SRE-AUTO][OPS-REVIEW] Fix request-status dependency failure",
+      "steps": [
+        "Proceed only when the Azure Monitor alert title or alertRule contains the case-sensitive rule name llmops-live-tool-failure. Stop if it does not match or if the evidence is not from live mode.",
+        "Investigate Azure in read-only mode. Correlate the Application Insights trace, verify the current Container App revision only to rule out a platform failure, and inspect Activity Log only when the trace indicates a platform or configuration change. Collect at most three direct evidence items and never execute an Azure write operation.",
+        "Build the strict broker payload with no free-form public text: mode=live; alert_id copied exactly from the Azure Monitor incident card for broker-side Managed Identity verification and never published; alert_rule=llmops-live-tool-failure; one to three evidence_codes chosen only from request_status_dependency_failed, structured_failure_returned, and container_revision_healthy; one to three ruled_out_codes; root_cause_code=request_status_dependency_unavailable; and confidence_band. Set investigation_fingerprint to the first 12 lowercase hexadecimal characters of SHA-256 over alert_rule|root_cause_code|comma-separated evidence_codes sorted lexically. The broker recomputes it and generates all public prose from server-side templates. Omit every other trace ID, resource ID, raw telemetry, prompt or output content, customer data, credentials, tokens, and connection strings.",
+        "Call only github-handoff-broker_submit_incident_handoff once with the strict payload. The broker, not SRE Agent, performs the idempotent repository-scoped GitHub issue creation and official Copilot assignment. Never call a GitHub write tool directly.",
+        "If the broker returns copilot_assigned or copilot_already_assigned, call only github-handoff-broker_get_handoff_status with the returned issue_number at intervals of at least 30 seconds for at most 10 minutes. Report draft_pr_ready only when the broker returns a verified pull_request_url and pull_request_is_draft=true. If the broker returns incomplete, stop immediately. A timeout remains an incomplete asynchronous handoff, not success.",
+        "Do not create or edit repository files directly, merge a pull request, deploy, trigger a workflow, modify Azure, enable automatic Azure remediation, or represent missing evidence, an uncreated issue, an unassigned Copilot task, or an uncreated pull request as success."
+      ],
+      "escalation": "If live evidence is unavailable, broker validation fails, the broker is not configured, or a draft pull request is not verified within 10 minutes, stop and leave the incident incomplete for human review. Never substitute simulation evidence.",
+      "runbook-url": "https://github.com/kohei3110/foundry-appinsights-llm-ops-demo/blob/main/docs/sre-github-handoff.md",
+      "agent-mode": "review"
+    }
+  ]
+}

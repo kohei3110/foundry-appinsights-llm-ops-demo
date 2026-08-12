@@ -5,12 +5,13 @@ dependencies
     operation = tostring(customDimensions["gen_ai.operation.name"]),
     scenario = tostring(customDimensions["llmops.scenario"]),
     mode = tostring(customDimensions["llmops.mode"]),
+    toolName = tostring(customDimensions["gen_ai.tool.name"]),
     policyStatus = tostring(customDimensions["llmops.policy.status"]),
     errorType = tostring(customDimensions["error.type"])
 | where mode == "live"
 | summarize
     stalePolicyCount = countif(operation == "retrieve" and policyStatus == "superseded"),
-    toolFailureCount = countif(operation == "execute_tool" and (success == false or isnotempty(errorType))),
+    toolFailureCount = countif(operation == "execute_tool" and toolName == "request_status" and errorType == "request_status_unavailable"),
     p95ToolDuration = percentileif(duration, 95, operation == "execute_tool"),
     affectedTraces = dcountif(operation_Id, scenario in ("stale_policy", "slow_tool", "tool_failure"))
   by bin(timestamp, 5m)

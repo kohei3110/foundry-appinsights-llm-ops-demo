@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -e '.[test]'
+      - name: Validate SRE incident plans
+        run: python scripts/sre_plan_config.py
+      - name: Run tests
+        run: python -m pytest
+      - name: Build GitHub handoff broker image
+        run: docker build -f src/github-broker/Dockerfile -t sre-github-broker:ci .
+
+  bicep:
+    name: Bicep build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Build Bicep entry points
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az bicep build --file infra/main.bicep --outfile /tmp/main.json
+            az bicep build --file infra/extensions/sre-observability.bicep --outfile /tmp/sre-observability.json

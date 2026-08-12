@@ -13,6 +13,8 @@ param tags object = {}
 
 param aiProjectDeployments array
 
+param githubHandoffEnabled bool = false
+
 var suffix = take(uniqueString(subscription().id, resourceGroup().id, name, location), 6)
 var normalizedName = toLower(replace(name, '-', ''))
 var foundryAccountName = take('aif${normalizedName}${suffix}', 64)
@@ -22,11 +24,15 @@ var applicationInsightsName = take('appi-${name}-${suffix}', 260)
 var containerRegistryName = take('cr${normalizedName}${suffix}', 50)
 var managedEnvironmentName = take('cae-${name}-${suffix}', 60)
 var webAppName = take('ca-web-${name}-${suffix}', 32)
+var githubBrokerAppName = take('ca-github-broker-${name}-${suffix}', 32)
+var githubBrokerIdentityName = take('id-github-broker-${name}-${suffix}', 64)
+var githubBrokerKeyVaultName = 'kv-${take(normalizedName, 14)}-${suffix}'
 var sreAgentName = take('sre-${name}-${suffix}', 32)
 var sreIdentityName = take('id-sre-${name}-${suffix}', 64)
 var azureMonitorAccountName = take('amw-${name}-${suffix}', 63)
 var observabilityAgentName = take('obs-${name}-${suffix}', 63)
 var observabilityIdentityName = take('id-obs-${name}-${suffix}', 64)
+var githubHandoffConfigured = githubHandoffEnabled
 var foundryUserRoleId = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   '53ca6127-db72-4b80-b1b0-d745d6d5456d'
@@ -54,6 +60,10 @@ var sreAgentStandardUserRoleId = subscriptionResourceId(
 var issueContributorRoleId = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   '8d7ecc5c-f27b-43cf-883f-46409d445502'
+)
+var keyVaultSecretsUserRoleId = subscriptionResourceId(
+  'Microsoft.Authorization/roleDefinitions',
+  '4633458b-17de-408a-b874-0445c86b69e6'
 )
 
 module logAnalytics 'br/public:avm/res/operational-insights/workspace:0.16.0' = {
@@ -400,7 +410,7 @@ resource toolFailureAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = 
     criteria: {
       allOf: [
         {
-          query: 'dependencies | where timestamp > ago(5m) | where tostring(customDimensions["gen_ai.operation.name"]) == "execute_tool" | where tostring(customDimensions["llmops.mode"]) == "live" | where success == false or isnotempty(customDimensions["error.type"])'
+          query: 'dependencies | where timestamp > ago(5m) | where tostring(customDimensions["gen_ai.operation.name"]) == "execute_tool" | where tostring(customDimensions["gen_ai.tool.name"]) == "request_status" | where tostring(customDimensions["llmops.mode"]) == "live" | where tostring(customDimensions["error.type"]) == "request_status_unavailable"'
           timeAggregation: 'Count'
           operator: 'GreaterThan'
           threshold: 0
@@ -428,12 +438,6 @@ module webApp 'br/public:avm/res/app/container-app:0.23.0' = {
     managedIdentities: {
       systemAssigned: true
     }
-    registries: [
-      {
-        server: containerRegistry.outputs.loginServer
-        identity: 'system'
-      }
-    ]
     secrets: [
       {
         name: 'appinsights-connection-string'
@@ -452,6 +456,10 @@ module webApp 'br/public:avm/res/app/container-app:0.23.0' = {
           {
             name: 'AZURE_EXECUTION_ENVIRONMENT'
             value: 'containerapp'
+          }
+          {
+            name: 'AZURE_CLIENT_ID'
+            value: githubBrokerIdentity.properties.clientId
           }
           {
             name: 'FOUNDRY_PROJECT_ENDPOINT'
@@ -557,6 +565,193 @@ resource webAcrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   }
 }
 
+resource githubBrokerIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' = {
+  name: githubBrokerIdentityName
+  location: location
+  tags: tags
+}
+
+resource githubBrokerKeyVault 'Microsoft.KeyVault/vaults@2024-11-01' = {
+  name: githubBrokerKeyVaultName
+  location: location
+  tags: tags
+  properties: {
+    tenantId: tenant().tenantId
+    enableRbacAuthorization: true
+    accessPolicies: []
+    publicNetworkAccess: 'Enabled'
+    enableSoftDelete: true
+    softDeleteRetentionInDays: 7
+    sku: {
+      family: 'A'
+      name: 'standard'
+    }
+  }
+}
+
+resource githubBrokerKeyVaultSecretsUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(githubBrokerKeyVault.id, githubBrokerIdentityName, 'secrets-user')
+  scope: githubBrokerKeyVault
+  properties: {
+    principalId: githubBrokerIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: keyVaultSecretsUserRoleId
+  }
+}
+
+module githubBrokerApp 'br/public:avm/res/app/container-app:0.23.0' = {
+  name: 'github-broker-container-app'
+  params: {
+    name: githubBrokerAppName
+    location: location
+    environmentResourceId: managedEnvironment.outputs.resourceId
+    tags: union(tags, {
+      'azd-service-name': 'github-broker'
+    })
+    managedIdentities: {
+      systemAssigned: true
+      userAssignedResourceIds: [
+        githubBrokerIdentity.id
+      ]
+    }
+    registries: [
+      {
+        server: containerRegistry.outputs.loginServer
+        identity: 'system'
+      }
+    ]
+    secrets: githubHandoffConfigured
+      ? [
+          {
+            name: 'github-handoff-bearer-token'
+            keyVaultUrl: '${githubBrokerKeyVault.properties.vaultUri}secrets/github-handoff-bearer-token'
+            identity: githubBrokerIdentity.id
+          }
+          {
+            name: 'github-broker-token'
+            keyVaultUrl: '${githubBrokerKeyVault.properties.vaultUri}secrets/github-broker-token'
+            identity: githubBrokerIdentity.id
+          }
+        ]
+      : []
+    containers: [
+      {
+        name: 'github-broker'
+        image: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+        env: concat(
+          [
+            {
+              name: 'GITHUB_HANDOFF_ENABLED'
+              value: string(githubHandoffConfigured)
+            }
+            {
+              name: 'AZURE_EXECUTION_ENVIRONMENT'
+              value: 'containerapp'
+            }
+            {
+              name: 'AZURE_SUBSCRIPTION_ID'
+              value: subscription().subscriptionId
+            }
+            {
+              name: 'AZURE_RESOURCE_GROUP'
+              value: resourceGroup().name
+            }
+            {
+              name: 'APPLICATIONINSIGHTS_RESOURCE_ID'
+              value: applicationInsights.outputs.resourceId
+            }
+            {
+              name: 'GITHUB_BROKER_OWNER'
+              value: 'kohei3110'
+            }
+            {
+              name: 'GITHUB_BROKER_REPOSITORY'
+              value: 'foundry-appinsights-llm-ops-demo'
+            }
+            {
+              name: 'GITHUB_BROKER_BASE_BRANCH'
+              value: 'main'
+            }
+          ],
+          githubHandoffConfigured
+            ? [
+                {
+                  name: 'GITHUB_HANDOFF_BEARER_TOKEN'
+                  secretRef: 'github-handoff-bearer-token'
+                }
+                {
+                  name: 'GITHUB_BROKER_TOKEN'
+                  secretRef: 'github-broker-token'
+                }
+              ]
+            : []
+        )
+        probes: [
+          {
+            type: 'Liveness'
+            httpGet: {
+              path: '/healthz'
+              port: 8000
+            }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          }
+          {
+            type: 'Readiness'
+            httpGet: {
+              path: '/healthz'
+              port: 8000
+            }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          }
+        ]
+        resources: {
+          cpu: json('0.5')
+          memory: '1Gi'
+        }
+      }
+    ]
+    ingressExternal: true
+    ingressAllowInsecure: false
+    ingressTargetPort: 8000
+    ingressTransport: 'auto'
+    activeRevisionsMode: 'Single'
+    scaleSettings: {
+      minReplicas: 1
+      maxReplicas: 1
+    }
+    diagnosticSettings: [
+      {
+        name: 'github-broker-to-log-analytics'
+        workspaceResourceId: logAnalytics.outputs.resourceId
+      }
+    ]
+    enableTelemetry: false
+  }
+  dependsOn: [
+    githubBrokerKeyVaultSecretsUser
+  ]
+}
+
+resource githubBrokerAcrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, githubBrokerAppName, 'acr-pull')
+  scope: existingRegistry
+  properties: {
+    principalId: githubBrokerApp.outputs.systemAssignedMIPrincipalId!
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: acrPullRoleId
+  }
+}
+
+module githubBrokerMonitoringReader './subscription-monitoring-reader.bicep' = {
+  name: 'github-broker-monitoring-reader-${suffix}'
+  scope: subscription()
+  params: {
+    principalId: githubBrokerIdentity.properties.principalId
+  }
+}
+
 resource webFoundryUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(foundryProject.id, webAppName, 'foundry-user')
   scope: foundryProject
@@ -597,6 +792,8 @@ output foundryProjectName string = foundryProjectName
 output foundryProjectId string = foundryProject.id
 output foundryProjectEndpoint string = 'https://${foundryAccountName}.services.ai.azure.com/api/projects/${foundryProjectName}'
 output webUrl string = 'https://${webApp.outputs.fqdn}'
+output githubBrokerUrl string = 'https://${githubBrokerApp.outputs.fqdn}'
+output githubBrokerKeyVaultName string = githubBrokerKeyVault.name
 output sreAgentName string = sreAgent.name
 output sreAgentEndpoint string = sreAgent.properties.agentEndpoint
 output azureMonitorAccountId string = azureMonitorAccount.id

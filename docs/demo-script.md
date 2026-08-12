@@ -9,8 +9,10 @@ Microsoft Foundry のポリシー回答 Agent に意図的な品質劣化、遅�
 3. Conversation ID、Response ID、Trace ID で証跡を関連付ける
 4. Application Insights で原因箇所を特定する
 5. Azure SRE Agent が読み取り専用で証拠、除外仮説、推定原因を整理する
-6. Azure Copilot Observability Agent がネクストアクションを提示する
-7. 人間が変更を承認し、固定評価ケースで結果を確認する
+6. SRE Agentが厳格なサニタイズ済みpayloadをbrokerへ渡す
+7. brokerがIssue作成とCopilot割り当てを自動実行し、Draft PRを待つ
+8. Azure Copilot Observability Agent がネクストアクションを提示する
+9. 人間が変更を承認し、固定評価ケースで結果を確認する
 
 **標準所要時間:** 20～25分
 
@@ -39,6 +41,8 @@ Microsoft Foundry のポリシー回答 Agent に意図的な品質劣化、遅�
 - `live` の失敗を `simulation` の成功結果で置き換えません。
 - `LLMOPS_CAPTURE_CONTENT=false` を維持し、プロンプトや回答本文を監視ログへ記録しません。
 - Azure SRE Agent は `ReadOnly` のまま使用し、書き込みコマンドや自動承認を使いません。
+- SRE AgentへGitHub write資格情報を渡さず、brokerの2ツールだけを事前許可します。
+- Issue作成とCopilot割り当てはbrokerが自動実行しますが、PRのreview、merge、deployは必ず人間が行います。
 - Observability Agent の出力は推奨事項として扱い、環境変更は必ず人間が承認します。
 - デモ中に `Microsoft.Monitor/settings/default`、RBAC、Alert、Agent、Container App の設定を変更しません。
 - 接続文字列、Access Token、資格情報、個人情報を画面共有しません。
@@ -125,6 +129,8 @@ Alert名:
 - `LLM Ops live request-status tool failure`
 
 Alert評価は5分間隔です。AlertがFiredになったことを確認してからデモを開始します。自動Issue生成はPreview機能のため、Issueが生成されない場合は後述のオンデマンド調査を使用します。
+
+SRE AgentのIncident titleには、上記display nameではなく `[Sev2] llmops-live-stale-policy` または `[Sev2] llmops-live-tool-failure` が表示されます。Response planのfilterはrule name部分へ一致させます。
 
 ## 6. 標準デモ手順
 
@@ -336,6 +342,19 @@ Issueとして保存する場合:
 
 `monitoring/kql/08-observability-alert-signals.kql` を実行し、Alertの入力信号を確認します。
 
+### Step 7.1: GitHub IssueとCopilot Draft PRへ引き継ぐ（3～5分）
+
+1. SRE AgentのIncident threadで、証拠、除外仮説、推定原因、confidenceを確認します。
+2. SRE Agentが `github-handoff-broker_submit_incident_handoff` へ厳格schemaのpayloadだけを送ったことを確認します。
+3. brokerがfingerprint付きのopen Issueを再利用または1件作成したことを確認します。
+4. brokerが公式GitHub APIでCopilotを自動割り当てしたことを確認します。個別承認画面は表示されません。
+5. `get_handoff_status` が30秒以上の間隔で状態を確認し、10分を超えてpollしないことを確認します。
+6. `draft_pr_ready`、PR URL、number、author、`draft=true`を確認します。
+7. `Python tests` と `Bicep build` のCI結果を確認します。
+8. merge、deploy、workflow dispatch、Azure変更が実行されていないことを確認します。
+
+broker未設定、validation失敗、Issue未作成、Copilot assignment未完了、PR未作成、10分timeoutの場合は、その状態をそのまま示します。simulationの参照や手作業で作成したIssueを自動成功として扱いません。
+
 ### Step 8: 修正前後の評価を比較する（3分）
 
 ```bash
@@ -402,6 +421,12 @@ artifacts/evaluation-comparison.json
 | SRE Agentがtimeout/502 | live証拠を取得できなかったと説明。simulation結果をlive結果として見せない |
 | SRE調査に古いTraceを指定 | 新しいliveシナリオを実行してTrace IDを取り直す |
 | Alertが見つからない | `08-observability-alert-signals.kql` で信号を確認し、5分のAlert評価を待つ |
+| SRE Incident planが調査前に停止 | title filterがdisplay nameではなく `llmops-live-*` rule nameへ一致しているか確認 |
+| broker readinessが503 | enable flag、broker bearer secret、repository-scoped GitHub user tokenを確認。SRE planを切り替えない |
+| brokerがpayloadを拒否 | live mode、allowlisted rule、field数、fingerprint、禁止されたID/contentを確認 |
+| GitHub Issueが重複 | 同じfingerprint付きtitleとbrokerの単一replica設定を確認 |
+| Copilot PRが未作成 | IssueのCopilot assignee、GitHub token権限、10分poll結果を確認。手作業PRを自動成功として扱わない |
+| PRのCIが表示されない | `.github/workflows/ci.yml` とActions実行権限、対象branchを確認 |
 | Issueが未生成 | HTTP 202 `awaiting_issue` を正常な非同期状態として示し、Fired Alertの **Investigate** を使用 |
 | **Investigate** が表示されない | Azure Copilot利用権限を確認。simulationで画面構成のみ示し、live成功とは説明しない |
 | KQLにデータがない | 取込遅延を考慮して数分待ち、検索期間とTrace IDを確認 |
@@ -420,7 +445,10 @@ artifacts/evaluation-comparison.json
 - SRE Investigation IDとThread ID
 - Alert名と発火時刻
 - Azure Monitor Issue ID（生成された場合）
+- GitHub Issue URL/numberとbroker fingerprint
+- Copilot assignment状態とDraft PR URL/number
+- `Python tests` と `Bicep build` の結果
 - 評価結果 `artifacts/evaluation-comparison.json`
-- 実施した人間承認と検証結果
+- PR以降に実施した人間承認と検証結果
 
 資格情報、Access Token、接続文字列、プロンプト本文、回答本文は証跡へ保存しません。

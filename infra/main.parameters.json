@@ -12,7 +12,10 @@
       "value": "${AZURE_RESOURCE_GROUP}"
     },
     "aiProjectDeploymentsJson": {
-      "value": "${AI_PROJECT_DEPLOYMENTS}"
+      "value": "[{\"name\":\"gpt-5.4-mini\",\"model\":{\"format\":\"OpenAI\",\"name\":\"gpt-5.4-mini\",\"version\":\"2026-03-17\"},\"sku\":{\"name\":\"GlobalStandard\",\"capacity\":10}}]"
+    },
+    "githubHandoffEnabled": {
+      "value": false
     }
   }
 }
