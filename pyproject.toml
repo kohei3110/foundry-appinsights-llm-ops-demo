@@ -33,8 +33,8 @@ test = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["src/policy-agent", "src/web"]
-include = ["policy_agent*", "webapp*"]
+where = ["src/policy-agent", "src/web", "src/github-broker"]
+include = ["policy_agent*", "webapp*", "github_broker*"]
 
 [tool.setuptools.package-data]
 webapp = ["static/*.html"]

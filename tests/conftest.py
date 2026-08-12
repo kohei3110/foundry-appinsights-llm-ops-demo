@@ -11,6 +11,7 @@ os.environ["APPLICATIONINSIGHTS_CONNECTION_STRING"] = ""
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "policy-agent"))
 sys.path.insert(0, str(ROOT / "src" / "web"))
+sys.path.insert(0, str(ROOT / "src" / "github-broker"))
 sys.path.insert(0, str(ROOT))
 
 from policy_agent.config import Settings

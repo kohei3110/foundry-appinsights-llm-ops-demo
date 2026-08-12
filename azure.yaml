@@ -48,6 +48,13 @@ services:
         docker:
             path: src/web/Dockerfile
             context: .
+    github-broker:
+        project: .
+        host: containerapp
+        language: python
+        docker:
+            path: src/github-broker/Dockerfile
+            context: .
 infra:
     provider: bicep
     path: ./infra
