@@ -4,10 +4,16 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from opentelemetry.trace import SpanKind
+from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from policy_agent.models import RuntimeMode, Scenario, Source
 from policy_agent.telemetry import get_tracer
+
+CURRENT_STATUS = "current"
+
+
+class PolicyUnavailableError(LookupError):
+    """Raised when no current policy document can be selected."""
 
 
 @dataclass(frozen=True)
@@ -50,16 +56,15 @@ class PolicyRepository:
         ]
 
     def select(self, scenario: Scenario) -> PolicyDocument:
-        desired_status = (
-            "superseded" if scenario is Scenario.STALE_POLICY else "current"
-        )
         matching = [
             document
             for document in self._documents
-            if document.status == desired_status
+            if document.status == CURRENT_STATUS
         ]
         if not matching:
-            raise LookupError(f"No {desired_status} policy document is configured")
+            raise PolicyUnavailableError(
+                "No current policy document is configured"
+            )
         return max(matching, key=lambda document: document.effective_date)
 
     def retrieve(
@@ -80,7 +85,14 @@ class PolicyRepository:
                 "llmops.retrieval.query_length": len(question),
             },
         ) as span:
-            document = self.select(scenario)
+            try:
+                document = self.select(scenario)
+            except PolicyUnavailableError as exc:
+                span.set_attribute("llmops.retrieval.result_count", 0)
+                span.set_attribute("error.type", "policy_unavailable")
+                span.set_status(Status(StatusCode.ERROR, str(exc)))
+                span.record_exception(exc)
+                raise
             span.set_attribute("llmops.policy.document_id", document.document_id)
             span.set_attribute("llmops.policy.version", document.version)
             span.set_attribute("llmops.policy.status", document.status)

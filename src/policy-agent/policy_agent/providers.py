@@ -10,7 +10,7 @@ from opentelemetry.trace import SpanKind, Status, StatusCode
 from policy_agent.config import Settings
 from policy_agent.credentials import build_credential
 from policy_agent.models import AskRequest, ProviderResult, RuntimeMode, Source
-from policy_agent.repository import PolicyRepository
+from policy_agent.repository import PolicyRepository, PolicyUnavailableError
 from policy_agent.telemetry import get_tracer
 from policy_agent.tools import RequestStatusTool
 
@@ -59,9 +59,15 @@ class SimulationProvider:
                 "llmops.scenario": request.scenario.value,
             },
         ) as invoke_span:
-            document = self._repository.retrieve(
-                request.question, request.scenario, self.mode
-            )
+            try:
+                document = self._repository.retrieve(
+                    request.question, request.scenario, self.mode
+                )
+            except PolicyUnavailableError as exc:
+                raise ProviderError(
+                    "policy_unavailable",
+                    "No current policy document is available to answer the question",
+                ) from exc
             status = await self._status_tool.execute(
                 request.request_id, request.scenario, self.mode
             )
@@ -192,6 +198,17 @@ class LiveFoundryProvider:
                 )
 
             try:
+                document = self._repository.select(request.scenario)
+            except PolicyUnavailableError as exc:
+                span.set_attribute("error.type", "policy_unavailable")
+                span.set_status(Status(StatusCode.ERROR, str(exc)))
+                span.record_exception(exc)
+                raise ProviderError(
+                    "policy_unavailable",
+                    "No current policy document is available to answer the question",
+                ) from exc
+
+            try:
                 client = self._get_client()
                 response = await asyncio.to_thread(
                     client.responses.create,
@@ -214,7 +231,6 @@ class LiveFoundryProvider:
             input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
             output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
             answer = str(response.output_text)
-            document = self._repository.select(request.scenario)
 
             span.set_attribute("gen_ai.response.id", response_id)
             span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
