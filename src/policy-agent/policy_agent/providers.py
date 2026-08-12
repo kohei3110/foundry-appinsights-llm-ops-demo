@@ -12,7 +12,12 @@ from policy_agent.credentials import build_credential
 from policy_agent.models import AskRequest, ProviderResult, RuntimeMode, Source
 from policy_agent.repository import PolicyRepository
 from policy_agent.telemetry import get_tracer
-from policy_agent.tools import RequestStatusTool
+from policy_agent.tools import (
+    REQUEST_STATUS_NOT_FOUND,
+    REQUEST_STATUS_UNAVAILABLE,
+    RequestStatusTool,
+    RequestStatusToolError,
+)
 
 
 class ProviderError(RuntimeError):
@@ -20,6 +25,28 @@ class ProviderError(RuntimeError):
         super().__init__(message)
         self.code = code
         self.retryable = retryable
+
+
+def classify_request_status_failure(exc: BaseException) -> str | None:
+    """Return the request-status dependency error type behind ``exc``.
+
+    Live tool failures surface through the hosted agent, so the tool error
+    type is matched on the exception chain and message markers. ``None`` means
+    the failure is not attributable to the request-status dependency.
+    """
+
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, RequestStatusToolError):
+            return current.code
+        message = str(current)
+        for code in (REQUEST_STATUS_UNAVAILABLE, REQUEST_STATUS_NOT_FOUND):
+            if code in message:
+                return code
+        current = current.__cause__ or current.__context__
+    return None
 
 
 class AnswerProvider(Protocol):
@@ -200,6 +227,18 @@ class LiveFoundryProvider:
             except ProviderError:
                 raise
             except Exception as exc:
+                tool_error_type = classify_request_status_failure(exc)
+                if tool_error_type is not None:
+                    span.set_attribute("error.type", tool_error_type)
+                    span.set_attribute("gen_ai.tool.name", "request_status")
+                    span.set_status(Status(StatusCode.ERROR, str(exc)))
+                    span.record_exception(exc)
+                    raise ProviderError(
+                        "request_status_failure",
+                        "Live request-status dependency failed "
+                        f"({tool_error_type}): {exc}",
+                        retryable=tool_error_type == REQUEST_STATUS_UNAVAILABLE,
+                    ) from exc
                 span.set_attribute("error.type", type(exc).__name__)
                 span.set_status(Status(StatusCode.ERROR, str(exc)))
                 span.record_exception(exc)

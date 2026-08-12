@@ -1,3 +1,5 @@
+import shutil
+
 from policy_agent.models import (
     AnswerStatus,
     AskRequest,
@@ -73,4 +75,33 @@ async def test_tool_failure_returns_structured_error(settings):
     assert response.status is AnswerStatus.ERROR
     assert response.error.code == "request_status_failure"
     assert response.error.retryable is True
+    assert response.answer is None
+
+
+async def test_missing_status_data_returns_structured_dependency_error(
+    settings, tmp_path
+):
+    data_root = tmp_path / "data"
+    shutil.copytree(settings.data_root, data_root)
+    (data_root / "requests" / "statuses.json").unlink()
+    broken = settings.model_copy(update={"data_root": data_root})
+
+    response = await build_service(broken).answer(
+        AskRequest(question="精算期限と申請状況は？")
+    )
+
+    assert response.status is AnswerStatus.ERROR
+    assert response.error.code == "request_status_failure"
+    assert response.error.retryable is True
+    assert response.answer is None
+
+
+async def test_unknown_request_id_is_not_retryable(settings):
+    response = await build_service(settings).answer(
+        AskRequest(question="精算期限と申請状況は？", request_id="REQ-UNKNOWN")
+    )
+
+    assert response.status is AnswerStatus.ERROR
+    assert response.error.code == "request_status_failure"
+    assert response.error.retryable is False
     assert response.answer is None

@@ -151,3 +151,51 @@ async def test_live_failure_never_falls_back_to_simulation(settings):
     assert response.error.code == "live_provider_failure"
     assert "synthetic Foundry outage" in response.error.message
     assert simulation.calls == 0
+
+
+class DependencyFailingResponses:
+    def create(self, **_kwargs):
+        raise RuntimeError(
+            "tool call failed: [request_status_unavailable] The request-status "
+            "dependency is unavailable"
+        )
+
+
+class DependencyFailingClient:
+    responses = DependencyFailingResponses()
+
+
+async def test_live_request_status_failure_is_reported_explicitly(settings):
+    configured = settings.model_copy(
+        update={
+            "foundry_project_endpoint": (
+                "https://example.services.ai.azure.com/api/projects/demo"
+            ),
+            "foundry_agent_name": "policy-agent",
+        }
+    )
+    repository = PolicyRepository(configured.data_root)
+    simulation = CountingSimulationProvider(
+        configured,
+        repository,
+        RequestStatusTool(configured.data_root, 0),
+    )
+    service = AnswerService(
+        {
+            RuntimeMode.SIMULATION: simulation,
+            RuntimeMode.LIVE: LiveFoundryProvider(
+                configured, repository, client=DependencyFailingClient()
+            ),
+        }
+    )
+
+    response = await service.answer(
+        AskRequest(question="精算期限は？", mode=RuntimeMode.LIVE)
+    )
+
+    assert response.status is AnswerStatus.ERROR
+    assert response.error.code == "request_status_failure"
+    assert response.error.retryable is True
+    assert response.answer is None
+    assert response.sources == []
+    assert simulation.calls == 0
